@@ -1,4 +1,5 @@
-import React from 'react'
+"use client";
+import React, { useRef, useState } from 'react'
 
 function IconCircle({ title, bg, children }: { title: string; bg: string; children: React.ReactNode }) {
   return (
@@ -22,6 +23,17 @@ function IconCircle({ title, bg, children }: { title: string; bg: string; childr
 }
 
 export default function Banner() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  function handlePlay() {
+    if (!videoRef.current) return;
+    const v = videoRef.current;
+    // ensure user-gesture play, do not autoplay until click
+    v.play().then(() => setPlaying(true)).catch(() => {
+      // if browser blocks, show controls so user can tap play
+      setPlaying(false);
+    });
+  }
   return (
     <section className="relative w-full">
       {/* content container */}
@@ -94,12 +106,34 @@ export default function Banner() {
                   </div>
                 </div>
 
-                {/* center logo */}
-                <img
-                  src="/Bluerigde Logo 1.png"
-                  alt="Blueridge AI Agency logo"
-                  className="relative z-10 w-56 max-w-full drop-shadow-xl"
-                />
+                {/* center video: smartphone format, click to play */}
+                <div className="relative z-10 w-[200px] sm:w-[240px] md:w-[260px] aspect-[9/16] overflow-hidden rounded-2xl shadow-xl ring-1 ring-white/20 bg-black/40">
+                  <video
+                    ref={videoRef}
+                    src="/demo.mp4"
+                    className="h-full w-full object-cover"
+                    controls={playing}
+                    playsInline
+                    muted
+                    onPlay={() => setPlaying(true)}
+                    onPause={() => setPlaying(false)}
+                  />
+                  {!playing && (
+                    <button
+                      type="button"
+                      onClick={handlePlay}
+                      className="absolute inset-0 grid place-items-center bg-black/35 text-white transition hover:bg-black/45"
+                      aria-label="Play demo video"
+                    >
+                      <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 ring-1 ring-white/30 backdrop-blur-md">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                        <span className="text-sm font-medium">Play demo</span>
+                      </span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* right: copy */}
