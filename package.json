@@ -1,0 +1,39 @@
+{
+  "name": "blueridge-ai-agency",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "set PORT=5173 && next dev",
+    "dev:cross": "cross-env PORT=5173 next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "date-fns": "^2.30.0",
+    "googleapis": "^130.0.0",
+    "jsonwebtoken": "^9.0.0",
+    "next": "^14.0.0",
+    "nodemailer": "^6.9.13",
+    "openai": "^5.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.179.1",
+    "vanta": "^0.5.24",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/nodemailer": "^7.0.1",
+    "@types/react": "^18.0.28",
+    "@types/react-dom": "^18.0.11",
+    "@types/three": "^0.179.0",
+    "autoprefixer": "^10.4.14",
+    "eslint": "^8.43.0",
+    "eslint-plugin-react": "^7.32.2",
+    "postcss": "^8.4.24",
+    "tailwindcss": "^3.4.7",
+    "typescript": "^5.4.2"
+  }
+}

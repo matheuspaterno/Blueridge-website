@@ -1,0 +1,4 @@
+- [ ] Project scaffolded using Vite + React + TypeScript
+- [ ] Tailwind configured
+- [ ] src structure created
+- [ ] README.md added with next steps
