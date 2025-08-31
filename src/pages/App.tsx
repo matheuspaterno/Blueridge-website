@@ -16,6 +16,23 @@ export default function App() {
       <main>
   <Hero />
 
+        {/* Value proposition section between About and Demo */}
+  <section aria-labelledby="value-prop-heading" className="relative z-20 -mt-4 sm:-mt-5 md:-mt-6 px-6 pt-4 sm:pt-6 pb-10 sm:pb-14">
+          <div className="mx-auto max-w-4xl text-center">
+            <h2 id="value-prop-heading" className="text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-white drop-shadow-xl">
+              Stop losing money because of missed calls
+            </h2>
+            <p className="mt-4 text-base sm:text-lg text-white drop-shadow">
+              Missed calls = missed revenue. Our AI Setters ensure every prospective customer gets a response, every time, 24/7. From first message to confirmed booking in seconds, your pipeline runs on autopilot.
+            </p>
+            <p className="mt-6 text-sm sm:text-base font-medium text-white inline-flex items-center gap-2 justify-center drop-shadow">
+              <a href="#demo" className="hover:text-white underline underline-offset-4 decoration-white/30 hover:decoration-white">Watch our demo</a>, or try it yourself
+              <span aria-hidden="true" className="inline-block align-middle text-white/90">→</span>
+              chat with Rick and book an appointment with us to get started!
+            </p>
+          </div>
+        </section>
+
         <div className="py-20 px-6">
           <section id="demo" className="mx-auto max-w-4xl py-12">
             <DemoCard />

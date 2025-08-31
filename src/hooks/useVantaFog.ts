@@ -30,7 +30,7 @@ export default function useVantaFog(ref: React.RefObject<HTMLElement> | null) {
         touchControls: true,
         minHeight: 200.0,
         minWidth: 200.0,
-        speed: 1.2,
+        speed: 1.5,
         density: 1.0,
       })
     }
