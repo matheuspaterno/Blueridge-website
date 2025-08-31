@@ -37,8 +37,8 @@ export default function ChatWidget() {
         throw new Error(text || res.statusText);
       }
       const data = await res.json();
-      const content = data?.content || "Sorry, I didn’t catch that. Could you rephrase?";
-      setMessages((m) => [...m, { role: "assistant", content } as Msg]);
+  const content = data?.content || "Sorry, I didn’t catch that. Could you rephrase?";
+  setMessages((m) => [...m, { role: "assistant", content } as Msg]);
   if (data?.meta?.slots) setLastSlots(data.meta.slots);
       if (data?.meta?.selectedStartISO) setSelectedStartISO(data.meta.selectedStartISO);
       if (data?.ui?.type === "contact_form") {

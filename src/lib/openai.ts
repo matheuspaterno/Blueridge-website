@@ -1,9 +1,14 @@
 // Minimal OpenAI SDK wrapper
 import OpenAI from "openai";
 
-export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export function getOpenAI() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    // Defer throwing to the caller; avoid throwing during module import/build
+    throw new Error("OPENAI_API_KEY missing");
+  }
+  return new OpenAI({ apiKey });
+}
 
 export const BOT_SYSTEM_PROMPT = `
 You are the Blueridge AI Agency assistant.

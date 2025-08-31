@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { openai, BOT_SYSTEM_PROMPT } from "@/lib/openai";
+import { getOpenAI, BOT_SYSTEM_PROMPT } from "@/lib/openai";
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
 
 type Msg = { role: "system" | "user" | "assistant" | "tool"; content: string; name?: string; tool_call_id?: string };
@@ -109,7 +109,7 @@ async function callInternalApi(path: string, payload: any) {
 
 export async function POST(req: Request) {
   try {
-    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes("your-")) {
+  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.includes("your-")) {
       return NextResponse.json(
         { error: "Server not configured: set OPENAI_API_KEY in .env.local" },
         { status: 503 }
@@ -244,6 +244,7 @@ export async function POST(req: Request) {
         const model = models[mi];
         for (let attempt = 0; attempt < 2 && !resp; attempt++) {
           try {
+            const openai = getOpenAI();
             resp = await openai.chat.completions.create({
               model,
               messages: chatMessages as any,
