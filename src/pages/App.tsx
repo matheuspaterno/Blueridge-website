@@ -1,5 +1,6 @@
 import React from 'react'
 import Hero from '../components/Hero'
+import Banner from '../components/Banner'
 
 
 export default function App() {
@@ -12,7 +13,7 @@ export default function App() {
       </header>
 
       <main>
-        <Hero />
+  <Hero />
 
         <div className="py-20 px-6">
           <section id="demo" className="mx-auto max-w-4xl py-12">
@@ -22,11 +23,8 @@ export default function App() {
             />
           </section>
 
-          <section id="financials" className="mx-auto max-w-4xl py-12">
-            <div
-              className="h-[360px] rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 shadow-xl mx-auto"
-              aria-label="Financials placeholder"
-            />
+          <section id="financials" className="mx-auto max-w-[96rem] py-12">
+            <Banner />
           </section>
         </div>
       </main>
