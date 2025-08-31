@@ -34,10 +34,7 @@ export default function Hero() {
         <p className="max-w-3xl mx-auto text-white/90 text-lg leading-relaxed">
           We create AI solutions that connect people and businesses more efficiently. Blueridge AI Agency blends innovation with local expertise to deliver responsible, intelligent tools that streamline operations and maximize results. </p>
 
-        <div className="mt-8 flex justify-center gap-4">
-          <a href="#demo" className="rounded-full bg-blueridge px-4 py-2 text-sm font-semibold text-white/95">See demo</a>
-          <a href="#financials" className="rounded-full bg-pine px-4 py-2 text-sm font-semibold text-white/95">Roadmap</a>
-        </div>
+  {/* Buttons removed as requested */}
       </div>
     </section>
   )
