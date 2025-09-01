@@ -1,6 +1,16 @@
 "use client";
 import React from 'react'
 
+async function startCheckout(tier: "starter" | "growth") {
+  const res = await fetch("/api/checkout", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tier })
+  });
+  const data = await res.json();
+  if (data?.url) window.location.href = data.url;
+}
+
 function IconCircle({ title, bg, children }: { title: string; bg: string; children: React.ReactNode }) {
   return (
     <div
@@ -121,7 +131,7 @@ export default function Banner() {
             <div className="mt-8 pt-8 border-t border-white/15">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
                 {/* Starter */}
-                <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6">
+                <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6 flex flex-col">
                   <h3 className="text-white font-semibold text-lg">
                     Starter <span className="text-white/90 font-normal">— $300/month</span>
                   </h3>
@@ -129,10 +139,13 @@ export default function Banner() {
                     <li className="flex gap-2"><span>•</span><span>AI assistant that books appointments 24/7</span></li>
                     <li className="flex gap-2"><span>•</span><span>Monthly monitoring &amp; support</span></li>
                   </ul>
+                  <button onClick={() => startCheckout("starter")} className="mt-auto w-full rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+                    Get Started
+                  </button>
                 </div>
 
                 {/* Growth */}
-                <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6">
+                <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6 flex flex-col">
                   <h3 className="text-white font-semibold text-lg">
                     Growth <span className="text-white/90 font-normal">— $600/month</span>
                   </h3>
@@ -142,10 +155,13 @@ export default function Banner() {
                     <li className="flex gap-2"><span>•</span><span>Customer Relationship Management</span></li>
                     <li className="flex gap-2"><span>•</span><span>Follow-ups for reminders or Google reviews</span></li>
                   </ul>
+                  <button onClick={() => startCheckout("growth")} className="mt-auto w-full rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">
+                    Choose Growth
+                  </button>
                 </div>
 
                 {/* Consulting */}
-                <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6">
+                <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6 flex flex-col">
                   <h3 className="text-white font-semibold text-lg">
                     Consulting <span className="text-white/90 font-normal">— Contact for Pricing</span>
                   </h3>
