@@ -42,6 +42,21 @@ export default function App() {
             <Banner />
           </section>
         </div>
+
+        {/* Founder quote under the last banner, above the footer */}
+        <section className="relative z-20 px-6 pb-6">
+          <div className="mx-auto max-w-4xl text-center">
+            <p className="text-sm sm:text-base md:text-lg text-white italic drop-shadow leading-relaxed">
+              "At Blueridge AI Agency, our goal is not to replace employees, but to empower them. We believe AI should handle the repetitive tasks so your team can focus on what matters most; building relationships, delivering value, and growing your business." — Founder: Matheus Paterno
+            </p>
+          </div>
+        </section>
+
+        <footer className="relative z-20 px-6 pb-10">
+          <div className="mx-auto max-w-7xl text-center text-xs sm:text-sm text-white drop-shadow">
+            © 2025 Blueridge AI Agency. All rights reserved.
+          </div>
+        </footer>
       </main>
     </div>
   )

@@ -112,8 +112,47 @@ export default function Banner() {
                   24/7 transforming leads into appointments
                 </p>
                 <p className="mt-5 text-sm sm:text-base font-medium text-white/90">
-                  Never miss a client again.
+                  Never miss a client again!
                 </p>
+              </div>
+            </div>
+
+            {/* pricing section */}
+            <div className="mt-8 pt-8 border-t border-white/15">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+                {/* Starter */}
+                <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6">
+                  <h3 className="text-white font-semibold text-lg">
+                    Starter <span className="text-white/90 font-normal">— $300/month</span>
+                  </h3>
+                  <ul className="mt-3 space-y-2 text-white/90 text-sm leading-relaxed">
+                    <li className="flex gap-2"><span>•</span><span>AI assistant that books appointments 24/7</span></li>
+                    <li className="flex gap-2"><span>•</span><span>Monthly monitoring &amp; support</span></li>
+                  </ul>
+                </div>
+
+                {/* Growth */}
+                <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6">
+                  <h3 className="text-white font-semibold text-lg">
+                    Growth <span className="text-white/90 font-normal">— $600/month</span>
+                  </h3>
+                  <ul className="mt-3 space-y-2 text-white/90 text-sm leading-relaxed">
+                    <li className="flex gap-2"><span>•</span><span>Everything in Starter</span></li>
+                    <li className="flex gap-2"><span>•</span><span>Lead Generation</span></li>
+                    <li className="flex gap-2"><span>•</span><span>Customer Relationship Management</span></li>
+                    <li className="flex gap-2"><span>•</span><span>Follow-ups for reminders or Google reviews</span></li>
+                  </ul>
+                </div>
+
+                {/* Consulting */}
+                <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6">
+                  <h3 className="text-white font-semibold text-lg">
+                    Consulting <span className="text-white/90 font-normal">— Contact for Pricing</span>
+                  </h3>
+                  <p className="mt-3 text-white/90 text-sm leading-relaxed">
+                    We’ll sit down with your team, map your workflows, and design custom AI implementations that make your business more efficient, customer-friendly, and scalable
+                  </p>
+                </div>
               </div>
             </div>
           </div>
