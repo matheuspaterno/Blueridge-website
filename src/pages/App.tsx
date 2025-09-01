@@ -25,10 +25,8 @@ export default function App() {
             <p className="mt-4 text-base sm:text-lg text-white drop-shadow">
               Missed calls = missed revenue. Our AI Setters ensure every prospective customer gets a response, every time, 24/7. From first message to confirmed booking in seconds, your pipeline runs on autopilot.
             </p>
-            <p className="mt-6 text-sm sm:text-base font-medium text-white inline-flex items-center gap-2 justify-center drop-shadow">
-              <a href="#demo" className="hover:text-white underline underline-offset-4 decoration-white/30 hover:decoration-white">Watch our demo</a>, or try it yourself
-              <span aria-hidden="true" className="inline-block align-middle text-white/90">→</span>
-              chat with Rick and book an appointment with us to get started!
+            <p className="mt-6 text-sm sm:text-base font-medium text-white text-center drop-shadow leading-relaxed">
+              <a href="#demo" className="hover:text-white underline underline-offset-4 decoration-white/30 hover:decoration-white">Watch our demo</a>, or try it yourself <span aria-hidden="true" className="align-middle text-white/90">→</span> chat with Rick and book an appointment with us to get started!
             </p>
           </div>
         </section>
