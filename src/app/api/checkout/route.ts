@@ -20,9 +20,8 @@ export async function POST(req: Request) {
       line_items: [{ price: priceId, quantity: 1 }],
       allow_promotion_codes: true,
       success_url: `${site}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${site}/checkout/cancel`,
-      billing_address_collection: "auto",
-      customer_creation: "if_required",
+  cancel_url: `${site}/checkout/cancel`,
+  billing_address_collection: "auto",
       subscription_data: {
         metadata: { tier },
       },
