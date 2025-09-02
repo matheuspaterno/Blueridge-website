@@ -151,8 +151,8 @@ export default function Banner() {
                   </h3>
                   <ul className="mt-3 space-y-2 text-white/90 text-sm leading-relaxed">
                     <li className="flex gap-2"><span>•</span><span>Everything in Starter</span></li>
-                    <li className="flex gap-2"><span>•</span><span>Lead Generation</span></li>
-                    <li className="flex gap-2"><span>•</span><span>Customer Relationship Management</span></li>
+                    <li className="flex gap-2"><span>•</span><span>Centralized Customer Database</span></li>
+                    <li className="flex gap-2"><span>•</span><span>Business Reporting and Insights</span></li>
                     <li className="flex gap-2"><span>•</span><span>Follow-ups for reminders or Google reviews</span></li>
                   </ul>
                   <button onClick={() => startCheckout("growth")} className="mt-auto w-full rounded-lg bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">
@@ -166,7 +166,7 @@ export default function Banner() {
                     Consulting <span className="text-white/90 font-normal">— Contact for Pricing</span>
                   </h3>
                   <p className="mt-3 text-white/90 text-sm leading-relaxed">
-                    We’ll sit down with your team, map your workflows, and design custom AI implementations that make your business more efficient, customer-friendly, and scalable
+                    We’ll sit down with your team, map your workflows, and design custom AI implementations that make your business more efficient, customer-friendly, and scalable (Modern Website, Lead Generation, Voice AI)
                   </p>
                 </div>
               </div>
