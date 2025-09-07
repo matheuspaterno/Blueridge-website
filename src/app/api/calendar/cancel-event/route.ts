@@ -8,7 +8,13 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const parsed = CancelEventSchema.parse(body);
-  const client = await getOAuthClient(parsed.owner_id);
+  let client;
+  try {
+    client = await getOAuthClient(parsed.owner_id);
+  } catch (err: any) {
+    if (err?.message === "needs_reauth") return NextResponse.json({ error: "needs_reauth" }, { status: 401 });
+    throw err;
+  }
     const calendar = google.calendar({ version: "v3", auth: client });
     await calendar.events.delete({ calendarId: parsed.calendarId || "primary", eventId: parsed.eventId });
     // update meeting row if present

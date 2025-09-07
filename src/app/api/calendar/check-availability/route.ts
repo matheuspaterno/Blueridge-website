@@ -33,7 +33,15 @@ export async function POST(req: Request) {
     const body = await req.json();
     const parsed = CheckAvailabilitySchema.parse(body);
     const owner = parsed.owner_id;
-  const client = await getOAuthClient(owner);
+  let client;
+  try {
+    client = await getOAuthClient(owner);
+  } catch (err: any) {
+    if (err?.message === "needs_reauth") {
+      return NextResponse.json({ error: "needs_reauth" }, { status: 401 });
+    }
+    throw err;
+  }
     const calendar = google.calendar({ version: "v3", auth: client });
 
   const fbRes = await calendar.freebusy.query({ requestBody: { timeMin: parsed.timeMinISO, timeMax: parsed.timeMaxISO, items: (parsed.calendarIds && parsed.calendarIds.length) ? parsed.calendarIds.map((id: string) => ({ id })) : [{ id: "primary" }] } });

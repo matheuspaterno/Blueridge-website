@@ -29,9 +29,16 @@ export async function getOAuthClient(ownerId?: string) {
         oAuth2Client.setCredentials(tokens);
         await saveOAuthTokensRow({ provider: "google", owner_id: ownerId || env.DEFAULT_OWNER_ID || null, access_token: tokens.access_token, refresh_token: tokens.refresh_token || null, expiry: tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null, scope: tokens.scope || null });
       }
-    } catch (err) {
+    } catch (err: any) {
+      // If Google reports the refresh token is invalid or revoked, surface a special error
+      // so callers can ask the user to re-authorize.
       console.warn("token refresh failed", err);
-      // leave client as-is
+      const errMsg = err?.response?.data?.error || err?.message || String(err);
+      if (typeof errMsg === "string" && errMsg.includes("invalid_grant")) {
+        // caller should handle this and trigger re-auth flow
+        throw new Error("needs_reauth");
+      }
+      // leave client as-is for non-refresh failures
     }
   }
   return oAuth2Client;

@@ -9,7 +9,13 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const parsed = CreateEventSchema.parse(body);
-  const client = await getOAuthClient(parsed.owner_id);
+  let client;
+  try {
+    client = await getOAuthClient(parsed.owner_id);
+  } catch (err: any) {
+    if (err?.message === "needs_reauth") return NextResponse.json({ error: "needs_reauth" }, { status: 401 });
+    throw err;
+  }
     const calendar = google.calendar({ version: "v3", auth: client });
     const res = await calendar.events.insert({ calendarId: parsed.calendarId || "primary", requestBody: { summary: parsed.title, description: parsed.description, start: { dateTime: parsed.startISO }, end: { dateTime: parsed.endISO }, attendees: parsed.attendees }, sendUpdates: "all" });
     // console smoke test
