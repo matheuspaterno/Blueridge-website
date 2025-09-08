@@ -42,3 +42,22 @@ export async function sendBookingEmail(opts: { to: string; startISO: string; end
   const mail: BookingEmail = { to: opts.to, subject: `Confirmed: ${opts.title}`, html };
   await getTransporter().sendMail({ from, to: mail.to, subject: mail.subject, html: mail.html });
 }
+
+export async function sendOwnerNotificationEmail(opts: { to: string; customerName: string; customerEmail: string; startISO: string; endISO: string; title: string; description?: string }) {
+  const tz = "America/New_York";
+  const fmt = (iso: string) => new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(iso));
+  const from = process.env.BOOKINGS_FROM_EMAIL || "services@blueridge-ai.com";
+  const subject = `New appointment request: ${opts.title}`;
+  const html = `
+  <div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;line-height:1.5">
+    <p>You have a new appointment request captured by the chatbot.</p>
+    <ul>
+      <li><strong>Customer:</strong> ${opts.customerName} (${opts.customerEmail})</li>
+      <li><strong>When:</strong> ${fmt(opts.startISO)} – ${new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(opts.endISO))} (ET)</li>
+      <li><strong>Title:</strong> ${opts.title}</li>
+      ${opts.description ? `<li><strong>Notes:</strong> ${opts.description}</li>` : ""}
+    </ul>
+    <p>Action: Manually add to your service@blueridge-ai.com calendar or reply to the customer to coordinate.</p>
+  </div>`;
+  await getTransporter().sendMail({ from, to: opts.to, subject, html });
+}

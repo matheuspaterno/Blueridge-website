@@ -1,37 +1,47 @@
 import { NextResponse } from "next/server";
 import { CreateEventSchema } from "@/lib/validations";
-import { getOAuthClient } from "@/lib/tokens";
-import { google } from "googleapis";
-import { createMeetingRow } from "@/lib/supabase";
-import { sendBookingEmail } from "@/lib/email";
+// Lazy-load Supabase inside handler to avoid hard failure if env not set
+import { sendBookingEmail, sendOwnerNotificationEmail } from "@/lib/email";
+// Google Calendar integration disabled; this route is email-only
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const parsed = CreateEventSchema.parse(body);
-  let client;
-  try {
-    client = await getOAuthClient(parsed.owner_id);
-  } catch (err: any) {
-    if (err?.message === "needs_reauth") return NextResponse.json({ error: "needs_reauth" }, { status: 401 });
-    throw err;
-  }
-    const calendar = google.calendar({ version: "v3", auth: client });
-    const res = await calendar.events.insert({ calendarId: parsed.calendarId || "primary", requestBody: { summary: parsed.title, description: parsed.description, start: { dateTime: parsed.startISO }, end: { dateTime: parsed.endISO }, attendees: parsed.attendees }, sendUpdates: "all" });
-    // console smoke test
-    const ev = res.data as any;
-    console.log("Created calendar event", ev.id, ev.htmlLink);
-    const row = await createMeetingRow({ calendar_event_id: ev.id, start_ts: parsed.startISO, end_ts: parsed.endISO, title: parsed.title, notes: parsed.description });
-    // Send confirmation email to the first attendee (if any)
+    // Email-only flow: confirm to customer and notify owner; no calendar insertion.
     const attendeeEmail: string | undefined = Array.isArray(parsed.attendees) && parsed.attendees[0]?.email ? parsed.attendees[0].email : undefined;
+    const attendeeName: string | undefined = Array.isArray(parsed.attendees) && parsed.attendees[0]?.name ? parsed.attendees[0].name : undefined;
+    // Create a meeting record for tracking (no calendar_event_id) – optional
+    let row: any = null;
+    try {
+      const supa = await import("@/lib/supabase");
+      if (supa?.createMeetingRow) {
+        row = await supa.createMeetingRow({ start_ts: parsed.startISO, end_ts: parsed.endISO, title: parsed.title, notes: parsed.description });
+      }
+    } catch (e) {
+      console.warn("Skipping meeting persistence:", (e as any)?.message || e);
+    }
     if (attendeeEmail) {
       try {
         await sendBookingEmail({ to: attendeeEmail, startISO: parsed.startISO, endISO: parsed.endISO, title: parsed.title });
       } catch (e) {
         console.warn("sendBookingEmail failed:", (e as any)?.message || e);
       }
+      try {
+        await sendOwnerNotificationEmail({
+          to: process.env.OWNER_NOTIFICATIONS_TO || "service@blueridge-ai.com",
+          customerName: attendeeName || attendeeEmail,
+          customerEmail: attendeeEmail,
+          startISO: parsed.startISO,
+          endISO: parsed.endISO,
+          title: parsed.title,
+          description: parsed.description || undefined,
+        });
+      } catch (e) {
+        console.warn("sendOwnerNotificationEmail failed:", (e as any)?.message || e);
+      }
     }
-    return NextResponse.json({ ok: true, event: ev, meeting: row });
+  return NextResponse.json({ ok: true, meeting: row });
   } catch (e: any) {
     return NextResponse.json({ error: e.message || String(e) }, { status: 400 });
   }

@@ -27,7 +27,7 @@ const tools: ChatCompletionTool[] = [
   type: "function",
     function: {
       name: "createAppointment",
-      description: "Create a calendar event for the owner with start/end ISO times, title, optional description and attendees.",
+      description: "Confirm an appointment by email (customer) and notify the owner; no calendar event is created.",
       parameters: {
         type: "object",
         properties: {
@@ -204,7 +204,7 @@ export async function POST(req: Request) {
       ].filter(Boolean).join(", ");
       chatMessages.push({
         role: "system",
-        content: `Contact details have been collected: ${parts}. Use these for booking and do not ask for them again.`,
+        content: `Contact details have been collected: ${parts}. Use these for email confirmation and do not ask for them again.`,
       });
     }
 
@@ -213,7 +213,7 @@ export async function POST(req: Request) {
       const startISO = clientSelectedStartISO;
       const endISO = new Date(new Date(startISO).getTime() + 30 * 60_000).toISOString();
       const title = "Blueridge Consultation";
-      const description = `Auto-booked via chat for ${contact.name || contact.email}.`;
+  const description = `Requested via chat for ${contact.name || contact.email}.`;
       const create = await callInternalApi("/api/calendar/create-event", {
         startISO,
         endISO,
@@ -223,9 +223,9 @@ export async function POST(req: Request) {
         owner_id: ownerId,
       });
       if (create.ok) {
-        return NextResponse.json({ content: "You’re all set. I’ve booked the meeting and sent a calendar invite." });
+        return NextResponse.json({ content: "You're all set. I’ll send a confirmation email and follow up with details." });
       }
-      return NextResponse.json({ content: "I couldn’t complete the booking just now. Can I try another time?" });
+      return NextResponse.json({ content: "I couldn’t complete the confirmation just now. Can I try again?" });
     }
 
     const maxSteps = 4;
@@ -298,9 +298,9 @@ export async function POST(req: Request) {
             const endISO = new Date(new Date(iso).getTime() + 30 * 60_000).toISOString();
             const create = await callInternalApi("/api/calendar/create-event", { startISO: iso, endISO, title: "Blueridge Consultation", attendees: [{ email: contact.email!, name: contact.name || undefined }], owner_id: ownerId });
             if (create.ok) {
-              return NextResponse.json({ content: "You’re all set. I’ve booked the meeting and sent a calendar invite." });
+              return NextResponse.json({ content: "You're all set. I’ll send a confirmation email shortly." });
             }
-            return NextResponse.json({ content: "I couldn’t complete the booking right now. Want me to try another time?" });
+            return NextResponse.json({ content: "I couldn’t finalize that just now. Want me to try again?" });
           }
         }
   // Deterministic scheduling fallback
@@ -621,7 +621,7 @@ export async function POST(req: Request) {
           const iso = matchIso;
           // If contact is missing, trigger the contact form immediately and carry the selected ISO back to client
           if (!(contact?.email || contact?.name || contact?.phone)) {
-            return NextResponse.json({ content: `Great—I'll hold ${new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(iso))}. Please enter your contact details to finalize.`, ui: { type: "contact_form" }, meta: { selectedStartISO: iso } });
+            return NextResponse.json({ content: `Great—I'll hold ${new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(iso))}. Please enter your contact details to confirm by email.`, ui: { type: "contact_form" }, meta: { selectedStartISO: iso } });
           }
           chatMessages.push({ role: "system", content: `User confirmed slot startISO=${iso}. Proceed to call createAppointment with duration 30 unless otherwise stated.` });
           nudgedForCreate = true;
