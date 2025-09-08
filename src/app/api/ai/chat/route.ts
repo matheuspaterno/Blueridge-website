@@ -6,28 +6,26 @@ type Msg = { role: "system" | "user" | "assistant" | "tool"; content: string; na
 
 const tools: ChatCompletionTool[] = [
   {
-  type: "function",
+    type: "function",
     function: {
       name: "getAvailability",
-      description: "Get available time slots for the owner between two ISO timestamps with a given duration (minutes).",
+      description: "Get free appointment start times (CalDAV) between two ISO timestamps with a given duration (minutes).",
       parameters: {
         type: "object",
         properties: {
           timeMinISO: { type: "string", description: "ISO 8601 start time (inclusive)" },
           timeMaxISO: { type: "string", description: "ISO 8601 end time (exclusive)" },
-          durationMins: { type: "integer", description: "Meeting length in minutes" },
-          calendarIds: { type: "array", items: { type: "string" }, description: "Optional list of calendar IDs" },
-          owner_id: { type: "string", description: "Owner identifier (optional)" },
+          durationMins: { type: "integer", description: "Meeting length in minutes (default 30)" },
         },
-        required: ["timeMinISO", "timeMaxISO", "durationMins"],
+        required: ["timeMinISO", "timeMaxISO"],
       },
     },
   },
   {
-  type: "function",
+    type: "function",
     function: {
       name: "createAppointment",
-      description: "Confirm an appointment by email (customer) and notify the owner; no calendar event is created.",
+      description: "Create a CalDAV event and send confirmation emails.",
       parameters: {
         type: "object",
         properties: {
@@ -43,8 +41,6 @@ const tools: ChatCompletionTool[] = [
               required: ["email"],
             },
           },
-          calendarId: { type: "string" },
-          owner_id: { type: "string" },
         },
         required: ["startISO", "endISO", "title"],
       },
@@ -104,6 +100,28 @@ async function callInternalApi(path: string, payload: any) {
     return { ok: true, data: json };
   } catch {
     return { ok: false, error: text || res.statusText };
+  }
+}
+
+async function fetchAvailabilityGET(args: { timeMinISO: string; timeMaxISO: string; durationMins: number }) {
+  const base = process.env.APP_BASE_URL || "http://localhost:5173";
+  const u = new URL("/api/availability", base);
+  u.searchParams.set("from", args.timeMinISO);
+  u.searchParams.set("to", args.timeMaxISO);
+  if (args.durationMins) u.searchParams.set("durationMins", String(args.durationMins));
+  try {
+    const r = await fetch(u.toString(), { method: "GET" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: j?.error || r.statusText };
+    const starts: string[] = Array.isArray(j.slots) ? j.slots : [];
+    return {
+      ok: true,
+      data: {
+        slots: starts.map((s) => ({ start: s, end: new Date(new Date(s).getTime() + (args.durationMins || 30) * 60_000).toISOString() })),
+      },
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || String(e) };
   }
 }
 
@@ -214,14 +232,14 @@ export async function POST(req: Request) {
       const endISO = new Date(new Date(startISO).getTime() + 30 * 60_000).toISOString();
       const title = "Blueridge Consultation";
   const description = `Requested via chat for ${contact.name || contact.email}.`;
-      const create = await callInternalApi("/api/calendar/create-event", {
-        startISO,
-        endISO,
-        title,
-        description,
-        attendees: [{ email: contact.email, name: contact.name || undefined }],
-        owner_id: ownerId,
-      });
+      const create = await (async () => {
+        try {
+          const res = await fetch((process.env.APP_BASE_URL || "http://localhost:5173") + "/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ start: startISO, durationMins: 30, name: contact.name, email: contact.email, notes: description }) });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok) return { ok: false, error: j?.error || res.statusText };
+          return { ok: true, data: j };
+        } catch (e: any) { return { ok: false, error: e?.message || String(e) }; }
+      })();
       if (create.ok) {
         return NextResponse.json({ content: "You're all set. I’ll send a confirmation email and follow up with details." });
       }
@@ -333,7 +351,7 @@ export async function POST(req: Request) {
   // Wide UTC window bracketing the ET day to avoid DST/offset issues
   const timeMinISO = new Date(targetAnchor.getTime() - 12 * 60 * 60 * 1000).toISOString();
   const timeMaxISO = new Date(targetAnchor.getTime() + 36 * 60 * 60 * 1000).toISOString();
-        const avail = await callInternalApi("/api/calendar/check-availability", { timeMinISO, timeMaxISO, durationMins: 30, owner_id: ownerId });
+  const avail = await fetchAvailabilityGET({ timeMinISO, timeMaxISO, durationMins: 30 });
   if (!avail.ok || !Array.isArray(avail.data?.slots) || avail.data.slots.length === 0) {
           return NextResponse.json({ content: `I didn’t see open windows for next ${mentionedDay}. Want me to check the following ${mentionedDay} instead?` });
         }
@@ -384,7 +402,7 @@ export async function POST(req: Request) {
           let toolResult: any = null;
       if (name === "getAvailability") {
             if (!args.durationMins) args.durationMins = 30;
-            toolResult = await callInternalApi("/api/calendar/check-availability", { ...args, owner_id: args.owner_id || ownerId });
+            toolResult = await fetchAvailabilityGET({ timeMinISO: args.timeMinISO, timeMaxISO: args.timeMaxISO, durationMins: args.durationMins || 30 });
             if (toolResult?.ok && toolResult.data?.slots) {
             let arr = Array.isArray(toolResult.data.slots) ? toolResult.data.slots : [];
             // If the user specified a weekday, force slots to that exact ET calendar date.
@@ -402,7 +420,7 @@ export async function POST(req: Request) {
                 const etMidUtc = new Date(Date.UTC(yy, (mm as number) - 1, dd as number));
                 const timeMinISO = new Date(etMidUtc.getTime() - 12 * 60 * 60 * 1000).toISOString();
                 const timeMaxISO = new Date(etMidUtc.getTime() + 36 * 60 * 60 * 1000).toISOString();
-                const widened = await callInternalApi("/api/calendar/check-availability", { timeMinISO, timeMaxISO, durationMins: args?.durationMins || 30, owner_id: args?.owner_id || ownerId });
+                const widened = await fetchAvailabilityGET({ timeMinISO, timeMaxISO, durationMins: args?.durationMins || 30 });
                 if (widened?.ok && Array.isArray(widened.data?.slots)) {
                   const slots = widened.data.slots as Array<{ start: string; end: string }>;
                   const tzFmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -429,7 +447,7 @@ export async function POST(req: Request) {
                 const etMidUtc = new Date(Date.UTC(yy, (mm as number) - 1, dd as number));
                 const timeMinISO = new Date(etMidUtc.getTime() - 12 * 60 * 60 * 1000).toISOString();
                 const timeMaxISO = new Date(etMidUtc.getTime() + 36 * 60 * 60 * 1000).toISOString();
-                const widened = await callInternalApi("/api/calendar/check-availability", { timeMinISO, timeMaxISO, durationMins: args?.durationMins || 30, owner_id: args?.owner_id || ownerId });
+                const widened = await fetchAvailabilityGET({ timeMinISO, timeMaxISO, durationMins: args?.durationMins || 30 });
                 if (widened?.ok && Array.isArray(widened.data?.slots)) {
                   const slots = widened.data.slots as Array<{ start: string; end: string }>;
                   const tzFmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -495,12 +513,7 @@ export async function POST(req: Request) {
                     const etMidUtc = new Date(Date.UTC(yy, (mm as number) - 1, dd as number));
                     const timeMinISO = new Date(etMidUtc.getTime() - 12 * 60 * 60 * 1000).toISOString();
                     const timeMaxISO = new Date(etMidUtc.getTime() + 36 * 60 * 60 * 1000).toISOString();
-                    const widened = await callInternalApi("/api/calendar/check-availability", {
-                      timeMinISO,
-                      timeMaxISO,
-                      durationMins: args?.durationMins || 30,
-                      owner_id: args?.owner_id || ownerId,
-                    });
+                    const widened = await fetchAvailabilityGET({ timeMinISO, timeMaxISO, durationMins: args?.durationMins || 30 });
                     if (widened?.ok && Array.isArray(widened.data?.slots)) {
                       const slots = (widened.data.slots as Array<{ start: string; end: string }>);
                       // Keep only slots on the exact ET calendar date
@@ -564,7 +577,17 @@ export async function POST(req: Request) {
               if ((!args.attendees || !Array.isArray(args.attendees) || args.attendees.length === 0) && contact?.email) {
                 args.attendees = [{ email: contact.email, name: contact.name || undefined }];
               }
-              toolResult = await callInternalApi("/api/calendar/create-event", { ...args, owner_id: args.owner_id || ownerId });
+              // Map createAppointment call to /api/book
+              try {
+                const duration = Math.max(1, Math.round((new Date(args.endISO).getTime() - new Date(args.startISO).getTime()) / 60000)) || 30;
+                const attendee = Array.isArray(args.attendees) && args.attendees[0];
+                const payload: any = { start: args.startISO, durationMins: duration, name: attendee?.name, email: attendee?.email, notes: args.description };
+                const r = await fetch((process.env.APP_BASE_URL || "http://localhost:5173") + "/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+                const j = await r.json().catch(() => ({}));
+                toolResult = r.ok ? { ok: true, data: j } : { ok: false, error: j?.error || r.statusText };
+              } catch (e: any) {
+                toolResult = { ok: false, error: e?.message || String(e) };
+              }
             }
           } else if (name === "cancelAppointment") {
             toolResult = await callInternalApi("/api/calendar/cancel-event", { ...args, owner_id: args.owner_id || ownerId });
@@ -621,7 +644,7 @@ export async function POST(req: Request) {
           const iso = matchIso;
           // If contact is missing, trigger the contact form immediately and carry the selected ISO back to client
           if (!(contact?.email || contact?.name || contact?.phone)) {
-            return NextResponse.json({ content: `Great—I'll hold ${new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(iso))}. Please enter your contact details to confirm by email.`, ui: { type: "contact_form" }, meta: { selectedStartISO: iso } });
+            return NextResponse.json({ content: `Great—I'll hold ${new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(iso))}. Please enter your contact details to confirm.`, ui: { type: "contact_form" }, meta: { selectedStartISO: iso } });
           }
           chatMessages.push({ role: "system", content: `User confirmed slot startISO=${iso}. Proceed to call createAppointment with duration 30 unless otherwise stated.` });
           nudgedForCreate = true;
@@ -666,7 +689,7 @@ export async function POST(req: Request) {
           const targetUtc = new Date(baseUtc.getTime() + daysUntil * 24 * 60 * 60 * 1000);
           const timeMinISO = new Date(Date.UTC(targetUtc.getUTCFullYear(), targetUtc.getUTCMonth(), targetUtc.getUTCDate(), 0, 0)).toISOString();
           const timeMaxISO = new Date(Date.UTC(targetUtc.getUTCFullYear(), targetUtc.getUTCMonth(), targetUtc.getUTCDate() + 1, 0, 0)).toISOString();
-          const avail = await callInternalApi("/api/calendar/check-availability", { timeMinISO, timeMaxISO, durationMins: 30, owner_id: ownerId });
+          const avail = await fetchAvailabilityGET({ timeMinISO, timeMaxISO, durationMins: 30 });
           if (!avail.ok || !Array.isArray(avail.data?.slots) || avail.data.slots.length === 0) {
             const dp = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", month: "long", day: "numeric" }).format(targetUtc);
             return NextResponse.json({ content: `I didn’t see open windows for ${dp}. Want me to check the following week instead?` });
