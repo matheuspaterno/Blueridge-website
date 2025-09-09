@@ -198,35 +198,45 @@ function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
 
 export async function generateSlots(opts: SlotGenOpts) {
   const { from, to, durationMins, businessHours, bufferMins, leadTimeMins } = opts;
+  const tz = process.env.PRIMARY_TIMEZONE || 'America/New_York';
   const now = new Date();
   const earliest = new Date(now.getTime() + leadTimeMins * 60_000);
   const busyEvents = await getEventsInRange({ start: from, end: to });
   const slots: Date[] = [];
-  // Start iteration on aligned boundary: round up to nearest duration multiple (relative to hour)
+  // Start iteration on aligned boundary (UTC) then evaluate each candidate in target timezone.
   const iterStart = new Date(from);
-  const alignedMinutes = Math.ceil(iterStart.getMinutes() / 15) * 15; // coarse 15-min alignment first
+  const alignedMinutes = Math.ceil(iterStart.getMinutes() / 15) * 15;
   iterStart.setMinutes(alignedMinutes, 0, 0);
-  for (let cursor = new Date(iterStart); cursor < to; cursor.setMinutes(cursor.getMinutes() + 15)) { // 15-min granularity
+  for (let cursor = new Date(iterStart); cursor < to; cursor.setMinutes(cursor.getMinutes() + 15)) {
     if (cursor < earliest) continue;
-    const dow = cursor.getDay(); // 0 Sun .. 6 Sat
-    const key = ['sun','mon','tue','wed','thu','fri','sat'][dow];
-    const windows = businessHours[key] || [];
+    // Determine local (target timezone) day-of-week and time components using Intl
+    const dowStr = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(cursor); // e.g. Mon
+    const key = dowStr.slice(0,3).toLowerCase(); // mon,tue,... (works for Sun/Sat)
+    const windows = (businessHours as any)[key] || [];
     if (!windows.length) continue;
+    // Extract hour & minute in target timezone
+    const parts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour:'2-digit', minute:'2-digit', hour12:false }).format(cursor); // HH:MM
+    const [locHStr, locMStr] = parts.split(':');
+    const locH = Number(locHStr); const locM = Number(locMStr);
+    const minutesOfDay = locH * 60 + locM;
     for (const win of windows) {
       const [hStart, hEnd] = win.split('-');
       if (!hStart || !hEnd) continue;
       const [sH, sM] = hStart.split(':').map(Number);
       const [eH, eM] = hEnd.split(':').map(Number);
-      const winStart = new Date(cursor); winStart.setHours(sH, sM, 0, 0);
-      const winEnd = new Date(cursor); winEnd.setHours(eH, eM, 0, 0);
-      if (cursor < winStart || cursor >= winEnd) continue;
-      // Align slot start to duration boundaries: require that minutes offset from window start is multiple of duration
-      const minutesFromWindowStart = Math.floor((cursor.getTime() - winStart.getTime()) / 60000);
+      const winStartMin = sH * 60 + sM;
+      const winEndMin = eH * 60 + eM;
+      if (minutesOfDay < winStartMin || minutesOfDay >= winEndMin) continue;
+      // Align slot start to duration boundaries relative to window start (in minutes)
+      const minutesFromWindowStart = minutesOfDay - winStartMin;
       if (minutesFromWindowStart % durationMins !== 0) continue;
       const slotStart = new Date(cursor);
       const slotEnd = new Date(slotStart.getTime() + durationMins * 60_000);
-      if (slotEnd > winEnd) continue;
-      // buffer: ensure buffer before & after relative to blocking events
+      // Ensure end still inside window in local timezone
+      const endParts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour:'2-digit', minute:'2-digit', hour12:false }).format(slotEnd).split(':');
+      const endMinutesOfDay = Number(endParts[0]) * 60 + Number(endParts[1]);
+      if (endMinutesOfDay > winEndMin) continue;
+      // buffer handling against busy events
       const blocked = busyEvents.some(ev => {
         if (!isEventBlocking(ev)) return false;
         const evStart = new Date(ev.start.getTime() - bufferMins * 60_000);
@@ -234,12 +244,11 @@ export async function generateSlots(opts: SlotGenOpts) {
         return rangesOverlap(slotStart, slotEnd, evStart, evEnd);
       });
       if (blocked) continue;
-      // prevent overlap with earlier chosen slots
       if (slots.some(s => rangesOverlap(s, new Date(s.getTime() + durationMins * 60_000), slotStart, slotEnd))) continue;
       slots.push(slotStart);
+      break; // slot accepted for one window; no need to test additional windows
     }
   }
-  // Filter to exact alignment (every durationMins on the 0 or 30 minute boundaries preferred)
   const dedup = Array.from(new Set(slots.map(d => d.toISOString()))).map(s => new Date(s));
   dedup.sort((a,b) => a.getTime() - b.getTime());
   return dedup;
