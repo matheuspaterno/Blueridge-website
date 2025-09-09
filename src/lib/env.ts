@@ -2,9 +2,9 @@ import { z } from "zod";
 
 const schema = z.object({
   OPENAI_API_KEY: z.string().min(1),
-  GOOGLE_CLIENT_ID: z.string().min(1),
-  GOOGLE_CLIENT_SECRET: z.string().min(1),
-  GOOGLE_OAUTH_REDIRECT_URI: z.string().url(),
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+  GOOGLE_OAUTH_REDIRECT_URI: z.string().url().optional(),
   NEXT_PUBLIC_SUPABASE_URL: z.string().min(1),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   APP_BASE_URL: z.string().url(),
@@ -13,6 +13,10 @@ const schema = z.object({
   SMTP_PORT: z.string().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  SMTP_SECURE: z.string().optional(),
+  SMTP_DEBUG: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
+  FROM_EMAIL: z.string().optional(),
   BOOKINGS_FROM_EMAIL: z.string().email().optional(),
   AI_MODEL_ONLY: z.string().optional(),
 });

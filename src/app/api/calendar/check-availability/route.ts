@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { CheckAvailabilitySchema } from "@/lib/validations";
-// Google Calendar integration temporarily disabled
-// import { getOAuthClient } from "@/lib/tokens";
-// import { google } from "googleapis";
+import { getOAuthClient } from "@/lib/tokens";
+import { google } from "googleapis";
 
 function slotStartIterator(start: Date, end: Date, stepMins: number) {
   const res: Date[] = [];
@@ -33,11 +32,39 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const parsed = CheckAvailabilitySchema.parse(body);
-  // const owner = parsed.owner_id;
-  // NOTE: Google freebusy disabled; we’ll compute naive availability within business hours without checking busy events.
-
-  // collect busy intervals across calendars (disabled)
-  const busy: Array<{ start: Date; end: Date }> = [];
+    const owner = parsed.owner_id;
+    const defaultCalendarIds = ["services@blueridge-ai.com"]; // target calendar email
+    let client;
+    try {
+      client = await getOAuthClient(owner);
+    } catch (err: any) {
+      if (err?.message === "needs_reauth") {
+        return NextResponse.json({ error: "needs_reauth" }, { status: 401 });
+      }
+      throw err;
+    }
+    const calendar = google.calendar({ version: "v3", auth: client });
+    const items = (parsed.calendarIds && parsed.calendarIds.length)
+      ? parsed.calendarIds.map((id: string) => ({ id }))
+      : defaultCalendarIds.map((id: string) => ({ id }));
+    let fbRes;
+    try {
+      fbRes = await calendar.freebusy.query({ requestBody: { timeMin: parsed.timeMinISO, timeMax: parsed.timeMaxISO, items } });
+    } catch (e: any) {
+      // Fallback: if calendar not shared or not found, try primary
+      try {
+        fbRes = await calendar.freebusy.query({ requestBody: { timeMin: parsed.timeMinISO, timeMax: parsed.timeMaxISO, items: [{ id: "primary" }] } });
+      } catch (e2: any) {
+        return NextResponse.json({ error: e2?.message || String(e2) }, { status: 400 });
+      }
+    }
+    // collect busy intervals across calendars
+    const busy: Array<{ start: Date; end: Date }> = [];
+    const calendars = fbRes.data.calendars || {};
+    for (const k of Object.keys(calendars)) {
+      const b = (calendars as any)[k].busy || [];
+      for (const interval of b) busy.push({ start: new Date(interval.start), end: new Date(interval.end) });
+    }
 
     // generate candidate slots at 30-min boundaries within ET business hours (default 9:00–17:00)
     const min = ceilTo30(new Date(parsed.timeMinISO));

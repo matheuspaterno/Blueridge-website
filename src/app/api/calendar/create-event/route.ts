@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       }
       try {
         await sendOwnerNotificationEmail({
-          to: process.env.OWNER_NOTIFICATIONS_TO || "service@blueridge-ai.com",
+          to: process.env.OWNER_NOTIFICATIONS_TO || process.env.FROM_EMAIL || process.env.BOOKINGS_FROM_EMAIL || "services@blueridge-ai.com",
           customerName: attendeeName || attendeeEmail,
           customerEmail: attendeeEmail,
           startISO: parsed.startISO,

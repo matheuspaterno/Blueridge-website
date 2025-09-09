@@ -9,16 +9,36 @@ export type BookingEmail = {
 
 let transporter: nodemailer.Transporter | null = null;
 
+function sanitizeHost(raw: string): string {
+  // Some earlier .env content incorrectly combined multiple vars on one line.
+  // If we detect commas/spaces, take the first token that looks like a hostname.
+  const first = raw.split(/[ ,]/).filter(Boolean)[0];
+  return first || raw.trim();
+}
+
 function getTransporter() {
   if (transporter) return transporter;
-  const host = process.env.SMTP_HOST;
+  const rawHost = process.env.SMTP_HOST;
+  const host = rawHost ? sanitizeHost(rawHost) : undefined;
   const port = Number(process.env.SMTP_PORT || 587);
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
+  const secureEnv = (process.env.SMTP_SECURE || "").toLowerCase();
+  const secure = secureEnv ? secureEnv === "true" : port === 465; // explicit override else infer
+  const debug = (process.env.SMTP_DEBUG || "").toLowerCase() === "true";
   if (!host || !user || !pass) {
-    throw new Error("SMTP not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS.");
+    throw new Error("SMTP not configured. Ensure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS are set.");
   }
-  transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
+  if (rawHost && rawHost !== host && /,|\s/.test(rawHost)) {
+    console.warn(`[email] Sanitized SMTP_HOST from '${rawHost}' to '${host}'. Please fix your .env to avoid combined variable lines.`);
+  }
+  transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+    ...(debug ? { logger: true, debug: true } : {}),
+  });
   return transporter;
 }
 
@@ -38,7 +58,7 @@ export async function sendBookingEmail(opts: { to: string; startISO: string; end
     <p>— Blueridge AI Agency</p>
   </div>`;
 
-  const from = process.env.BOOKINGS_FROM_EMAIL || "services@blueridge-ai.com";
+  const from = process.env.BOOKINGS_FROM_EMAIL || process.env.FROM_EMAIL || process.env.SMTP_FROM || "services@blueridge-ai.com";
   const mail: BookingEmail = { to: opts.to, subject: `Confirmed: ${opts.title}`, html };
   await getTransporter().sendMail({ from, to: mail.to, subject: mail.subject, html: mail.html });
 }
@@ -46,7 +66,7 @@ export async function sendBookingEmail(opts: { to: string; startISO: string; end
 export async function sendOwnerNotificationEmail(opts: { to: string; customerName: string; customerEmail: string; startISO: string; endISO: string; title: string; description?: string }) {
   const tz = "America/New_York";
   const fmt = (iso: string) => new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(iso));
-  const from = process.env.BOOKINGS_FROM_EMAIL || "services@blueridge-ai.com";
+  const from = process.env.BOOKINGS_FROM_EMAIL || process.env.FROM_EMAIL || process.env.SMTP_FROM || "services@blueridge-ai.com";
   const subject = `New appointment request: ${opts.title}`;
   const html = `
   <div style="font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;line-height:1.5">
