@@ -181,19 +181,22 @@ export async function POST(req: Request) {
       for (const p of parts) g[p.type] = p.value;
       return { y: Number(g.year), m: Number(g.month), d: Number(g.day), wd: String(g.weekday) };
     }
-    function addDaysUtc(dateUtc: Date, days: number) {
-      const du = new Date(Date.UTC(dateUtc.getUTCFullYear(), dateUtc.getUTCMonth(), dateUtc.getUTCDate()));
-      du.setUTCDate(du.getUTCDate() + days);
-      return du;
+    // Helper: create a stable UTC anchor representing an ET calendar date using a midday anchor
+    // Rationale: Using UTC midnight for an ET date then adding 1 day can still format to the same
+    // ET calendar date because 00:00 UTC may be the prior evening in ET (offset -4/-5). By anchoring
+    // at 12:00 UTC we ensure the corresponding local ET time stays within the intended calendar date
+    // across DST transitions.
+    function etCalendarAnchorUtc(y: number, m: number, d: number) {
+      return new Date(Date.UTC(y, m - 1, d, 16, 0, 0)); // 16:00 UTC ~= 12:00 ET during DST, 11:00 ET standard still same date
     }
-    // Construct a UTC date from ET calendar date (at 00:00 ET approximated via UTC date)
-    function utcFromEtCalendarDate(y: number, m: number, d: number) {
-      // Use UTC midnight of the same calendar date; for guidance text only
-      return new Date(Date.UTC(y, m - 1, d));
+    function addEtDaysFromNow(nowDate: Date, days: number) {
+      const p = getEtDateParts(nowDate); // ET parts of 'now'
+      const base = etCalendarAnchorUtc(p.y, p.m, p.d);
+      return new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
     }
     let nextWeekdayText: string | null = null;
   if (!modelOnly && (isToday || isTomorrow)) {
-      const base = isTomorrow ? addDaysUtc(utcFromEtCalendarDate(getEtDateParts(now).y, getEtDateParts(now).m, getEtDateParts(now).d), 1) : utcFromEtCalendarDate(getEtDateParts(now).y, getEtDateParts(now).m, getEtDateParts(now).d);
+      const base = isTomorrow ? addEtDaysFromNow(now, 1) : addEtDaysFromNow(now, 0);
       const targetPretty = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(base);
       nextWeekdayText = targetPretty;
       chatMessages.unshift({ role: "system", content: `Guidance: The user said ${isTomorrow ? "tomorrow" : "today"}. Treat it as ${targetPretty} (America/New_York). Always call getAvailability for that date before proposing slots.` });
@@ -204,8 +207,7 @@ export async function POST(req: Request) {
       const currentDow = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(et.wd);
       let daysUntil = (targetDow - currentDow + 7) % 7;
       if (daysUntil === 0) daysUntil = 7; // if same weekday, pick the following week
-      const etBaseUtc = utcFromEtCalendarDate(et.y, et.m, et.d);
-      const targetUtc = addDaysUtc(etBaseUtc, daysUntil);
+      const targetUtc = new Date(etCalendarAnchorUtc(et.y, et.m, et.d).getTime() + daysUntil * 86400000);
       const targetPretty = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(targetUtc);
       nextWeekdayText = targetPretty;
       chatMessages.unshift({
@@ -331,12 +333,7 @@ export async function POST(req: Request) {
         const isTomorrow = /\btomorrow\b/i.test(lastUser);
         let targetAnchor = now;
         if (isToday || isTomorrow) {
-          const todayParts = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "numeric", day: "numeric" }).formatToParts(now);
-          const y = Number(todayParts.find(p => p.type === 'year')?.value);
-          const m = Number(todayParts.find(p => p.type === 'month')?.value);
-          const d = Number(todayParts.find(p => p.type === 'day')?.value);
-          const baseUtc = new Date(Date.UTC(y, m - 1, d));
-          targetAnchor = isTomorrow ? new Date(baseUtc.getTime() + 24 * 60 * 60 * 1000) : baseUtc;
+          targetAnchor = isTomorrow ? addEtDaysFromNow(now, 1) : addEtDaysFromNow(now, 0);
         } else if (mentionedDay) {
           const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).formatToParts(now);
           const wdShort = parts.find(p => p.type === 'weekday')?.value || "";
@@ -344,7 +341,7 @@ export async function POST(req: Request) {
           const targetDow = weekdayMap[mentionedDay];
           let daysUntil = (targetDow - currentDow + 7) % 7;
           if (daysUntil === 0) daysUntil = 7; // next occurrence
-          targetAnchor = new Date(now.getTime() + daysUntil * 24 * 60 * 60 * 1000);
+          targetAnchor = new Date(etCalendarAnchorUtc(getEtDateParts(now).y, getEtDateParts(now).m, getEtDateParts(now).d).getTime() + daysUntil * 86400000);
         } else {
           return NextResponse.json({ content: "Which day works best? I can check Monday–Friday and share a couple of windows." });
         }
@@ -408,9 +405,7 @@ export async function POST(req: Request) {
             // If the user specified a weekday, force slots to that exact ET calendar date.
             let forcedEtYmd: string | null = null;
             if (isToday || isTomorrow) {
-              const etParts = getEtDateParts(now);
-              const baseUtc = utcFromEtCalendarDate(etParts.y, etParts.m, etParts.d);
-              const targetUtc = isTomorrow ? addDaysUtc(baseUtc, 1) : baseUtc;
+              const targetUtc = isTomorrow ? addEtDaysFromNow(now, 1) : addEtDaysFromNow(now, 0);
               forcedEtYmd = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(targetUtc);
               const arrDay = arr.filter((s: { start: string; end: string }) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(s.start)) === forcedEtYmd);
               if (arrDay.length) {
@@ -436,7 +431,7 @@ export async function POST(req: Request) {
               const currentDow = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(wdShort);
               const targetDow = wdIndex[mentionedDay];
               let daysUntil = (targetDow - currentDow + 7) % 7; if (daysUntil === 0) daysUntil = 7;
-              const targetAnchor = new Date(now.getTime() + daysUntil * 24 * 60 * 60 * 1000);
+              const targetAnchor = new Date(etCalendarAnchorUtc(getEtDateParts(now).y, getEtDateParts(now).m, getEtDateParts(now).d).getTime() + daysUntil * 86400000);
               forcedEtYmd = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(targetAnchor);
               const arrDay = arr.filter((s: { start: string; end: string }) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(s.start)) === forcedEtYmd);
               if (arrDay.length) {
@@ -685,8 +680,7 @@ export async function POST(req: Request) {
           const y = Number(todayEtParts.find(p => p.type === 'year')?.value);
           const m = Number(todayEtParts.find(p => p.type === 'month')?.value);
           const d = Number(todayEtParts.find(p => p.type === 'day')?.value);
-          const baseUtc = new Date(Date.UTC(y, m - 1, d));
-          const targetUtc = new Date(baseUtc.getTime() + daysUntil * 24 * 60 * 60 * 1000);
+          const targetUtc = new Date(etCalendarAnchorUtc(y, m, d).getTime() + daysUntil * 86400000);
           const timeMinISO = new Date(Date.UTC(targetUtc.getUTCFullYear(), targetUtc.getUTCMonth(), targetUtc.getUTCDate(), 0, 0)).toISOString();
           const timeMaxISO = new Date(Date.UTC(targetUtc.getUTCFullYear(), targetUtc.getUTCMonth(), targetUtc.getUTCDate() + 1, 0, 0)).toISOString();
           const avail = await fetchAvailabilityGET({ timeMinISO, timeMaxISO, durationMins: 30 });
