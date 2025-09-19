@@ -150,7 +150,7 @@ export async function POST(req: Request) {
   const modelOnly = (process.env.AI_MODEL_ONLY || "").toLowerCase() === "true";
 
     // Provide the model with the actual current date in America/New_York to prevent date hallucinations
-    const tz = "America/New_York";
+    const tz = process.env.PRIMARY_TIMEZONE || "America/New_York";
     const now = new Date();
     const nowParts = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(now);
     chatMessages.unshift({
@@ -477,8 +477,8 @@ export async function POST(req: Request) {
               (toolResult as any).data.slots = dedup;
               lastSlots = dedup;
         responseMeta.slots = dedup;
-              // Provide a human-friendly summary of contiguous ranges (ET) and instruct the model to present ranges
-              const fmt = (iso: string) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(iso));
+              // Provide a human-friendly summary of contiguous ranges (local timezone) and instruct the model to present ranges
+              const fmt = (iso: string) => new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(iso));
               const ranges: Array<{ a: string; b: string }> = [];
               for (let i = 0; i < dedup.length; ) {
                 let j = i;

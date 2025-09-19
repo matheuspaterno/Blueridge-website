@@ -11,33 +11,59 @@ const businessHours = {
   sun: []
 };
 
+// Fabrication fallback: generate slots in the configured timezone (not server-local) to avoid UTC shifts in prod
 function fabricateSlots({ from, durationMins, businessHours, maxDays }: { from: Date; durationMins: number; businessHours: any; maxDays: number; }) {
   const fabricated: Date[] = [];
-  const base = new Date(from);
+  const tz = process.env.PRIMARY_TIMEZONE || 'America/New_York';
   const earliest = new Date(Date.now() + 45 * 60_000);
-  for (let day = 0; day < maxDays && fabricated.length < 6; day++) {
-    const d = new Date(base.getTime() + day * 24 * 60 * 60 * 1000);
-    const key = ['sun','mon','tue','wed','thu','fri','sat'][d.getDay()];
-    const windows = (businessHours as any)[key] as string[] | undefined;
-    if (!windows || !windows.length) continue;
+  // Start from the next 15-min boundary to align nicely
+  const iterStart = new Date(from);
+  const alignedMinutes = Math.ceil(iterStart.getMinutes() / 15) * 15;
+  iterStart.setMinutes(alignedMinutes, 0, 0);
+
+  // We iterate over time forward and admit slots that fall within business windows of their local (tz) day
+  const maxMs = maxDays * 24 * 60 * 60 * 1000;
+  const endBy = new Date(iterStart.getTime() + maxMs);
+  for (let cursor = new Date(iterStart); cursor < endBy && fabricated.length < 6; cursor.setMinutes(cursor.getMinutes() + 15)) {
+    if (cursor < earliest) continue;
+    // Determine local DOW key and local HH:MM in target timezone using Intl
+    const dowStr = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(cursor); // Mon, Tue, ...
+    const key = dowStr.slice(0, 3).toLowerCase();
+    const windows: string[] = (businessHours as any)[key] || [];
+    if (!windows.length) continue;
+
+    const hm = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(cursor); // HH:MM
+    const [locHStr, locMStr] = hm.split(':');
+    const locH = Number(locHStr);
+    const locM = Number(locMStr);
+    const minutesOfDay = locH * 60 + locM;
+
     for (const win of windows) {
       const [hStart, hEnd] = win.split('-');
       if (!hStart || !hEnd) continue;
       const [sH, sM] = hStart.split(':').map(Number);
       const [eH, eM] = hEnd.split(':').map(Number);
-      const winStart = new Date(d); winStart.setHours(sH, sM, 0, 0);
-      const winEnd = new Date(d); winEnd.setHours(eH, eM, 0, 0);
-      for (let cursor = new Date(winStart); cursor < winEnd; cursor.setMinutes(cursor.getMinutes() + durationMins)) {
-        if (cursor < earliest) continue;
-        const end = new Date(cursor.getTime() + durationMins * 60_000);
-        if (end > winEnd) break;
-        fabricated.push(new Date(cursor));
-        if (fabricated.length >= 6) break;
-      }
-      if (fabricated.length >= 6) break;
+      const winStartMin = sH * 60 + sM;
+      const winEndMin = eH * 60 + eM;
+      if (minutesOfDay < winStartMin || minutesOfDay >= winEndMin) continue;
+      // Align slot start to duration boundaries relative to window start (in minutes)
+      const minutesFromWindowStart = minutesOfDay - winStartMin;
+      if (minutesFromWindowStart % durationMins !== 0) continue;
+      const slotStart = new Date(cursor);
+      const slotEnd = new Date(slotStart.getTime() + durationMins * 60_000);
+      // Ensure end still inside window in local timezone
+      const endParts = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(slotEnd).split(':');
+      const endMinutesOfDay = Number(endParts[0]) * 60 + Number(endParts[1]);
+      if (endMinutesOfDay > winEndMin) continue;
+      // Accept slot
+      fabricated.push(new Date(slotStart));
+      break;
     }
   }
-  return fabricated;
+  // Dedupe and sort
+  const dedup = Array.from(new Set(fabricated.map(d => d.toISOString()))).map(s => new Date(s));
+  dedup.sort((a, b) => a.getTime() - b.getTime());
+  return dedup.slice(0, 6);
 }
 
 export async function GET(req: Request) {
