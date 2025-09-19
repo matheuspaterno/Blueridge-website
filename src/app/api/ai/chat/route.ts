@@ -316,11 +316,21 @@ export async function POST(req: Request) {
               return NextResponse.json({ content: `Got it—I'll hold ${new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(iso))}. Please enter your contact details to finalize.`, ui: { type: "contact_form" }, meta: { selectedStartISO: iso } });
             }
             const endISO = new Date(new Date(iso).getTime() + 30 * 60_000).toISOString();
-            const create = await callInternalApi("/api/calendar/create-event", { startISO: iso, endISO, title: "Blueridge Consultation", attendees: [{ email: contact.email!, name: contact.name || undefined }], owner_id: ownerId });
-            if (create.ok) {
-              return NextResponse.json({ content: "You're all set. I’ll send a confirmation email shortly." });
+            // Create the actual CalDAV event via /api/book (writes to services@blueridge-ai.com calendar)
+            try {
+              const r = await fetch((process.env.APP_BASE_URL || "http://localhost:5173") + "/api/book", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ start: iso, durationMins: 30, name: contact.name, email: contact.email, notes: "Requested via chat" })
+              });
+              const j = await r.json().catch(() => ({}));
+              if (r.ok) {
+                return NextResponse.json({ content: "You're all set. I’ll send a confirmation email shortly." });
+              }
+              return NextResponse.json({ content: "I couldn’t finalize that just now. Want me to try again?" });
+            } catch (e) {
+              return NextResponse.json({ content: "I couldn’t finalize that just now. Want me to try again?" });
             }
-            return NextResponse.json({ content: "I couldn’t finalize that just now. Want me to try again?" });
           }
         }
   // Deterministic scheduling fallback
