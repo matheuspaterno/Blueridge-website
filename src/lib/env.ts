@@ -18,6 +18,7 @@ const schema = z.object({
   SMTP_FROM: z.string().optional(),
   FROM_EMAIL: z.string().optional(),
   BOOKINGS_FROM_EMAIL: z.string().email().optional(),
+  OWNER_NOTIFY_EMAIL: z.string().email().optional(),
   AI_MODEL_ONLY: z.string().optional(),
 });
 

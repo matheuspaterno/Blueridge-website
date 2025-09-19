@@ -70,6 +70,19 @@ export async function POST(req: Request) {
         if (DEBUG) console.warn('sendOwnerNotificationEmail failed', msg);
         if (STRICT) return NextResponse.json({ error: 'owner email failed: ' + msg }, { status: 500 });
       }
+      // Always send a copy to OWNER_NOTIFY_EMAIL (or default Proton address)
+      const notifyTo = process.env.OWNER_NOTIFY_EMAIL || 'matheuspaterno@proton.me';
+      if (notifyTo) {
+        try {
+          await sendOwnerNotificationEmail({ to: notifyTo, customerName: name || (email || 'Client'), customerEmail: email || 'n/a', startISO: start.toISOString(), endISO: end.toISOString(), title, description });
+          if (DEBUG) console.log('[booking] owner notify email queued to', notifyTo);
+        } catch (e: any) {
+          const msg = e?.message || String(e);
+          emailErrors.push('ownerNotify:' + msg);
+          if (DEBUG) console.warn('[booking] owner notify failed', msg);
+          if (STRICT) return NextResponse.json({ error: 'owner notify failed: ' + msg }, { status: 500 });
+        }
+      }
     }
   const responsePayload = { ok: true, uid, eventCreated, customerEmailSent, ownerEmailSent, calendarError, emailErrors: emailErrors.length ? emailErrors : undefined };
   if (DEBUG) console.log('[booking] response', responsePayload);
