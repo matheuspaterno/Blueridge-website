@@ -1247,6 +1247,7 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
           */}
           <h2 className="text-3xl font-semibold">Voice AI</h2>
           <p className="mt-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 tracking-wide">Click the orb to talk with Rick.</p>
+          <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400 max-w-[200px] leading-snug">(ask questions about Blueridge AI, book appointments...)</p>
           {/* Sanitized subtitle removed visually
           <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">Talk to Rick for quick answers.</p>
           */}
