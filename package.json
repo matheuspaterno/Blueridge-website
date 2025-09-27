@@ -7,7 +7,8 @@
     "dev:cross": "cross-env PORT=5173 next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --ext .ts,.tsx"
+  "lint": "eslint . --ext .ts,.tsx",
+  "test": "tsx __tests__/voice.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",
@@ -37,6 +38,7 @@
     "eslint-plugin-react": "^7.32.2",
     "postcss": "^8.4.24",
     "tailwindcss": "^3.4.7",
-    "typescript": "^5.4.2"
+    "typescript": "^5.4.2",
+    "tsx": "^4.7.0"
   }
 }

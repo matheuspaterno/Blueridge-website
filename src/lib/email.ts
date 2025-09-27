@@ -27,7 +27,13 @@ function getTransporter() {
   const secure = secureEnv ? secureEnv === "true" : port === 465; // explicit override else infer
   const debug = (process.env.SMTP_DEBUG || "").toLowerCase() === "true";
   if (!host || !user || !pass) {
-    throw new Error("SMTP not configured. Ensure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS are set.");
+    // Provide a dev-mode fallback so flows can be tested without real SMTP.
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[email] SMTP not fully configured (missing host/user/pass). Using nodemailer jsonTransport fallback (dev only).');
+      transporter = nodemailer.createTransport({ jsonTransport: true });
+      return transporter;
+    }
+    throw new Error("SMTP not configured. Ensure SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS are set (no dev fallback in production).");
   }
   if (rawHost && rawHost !== host && /,|\s/.test(rawHost)) {
     console.warn(`[email] Sanitized SMTP_HOST from '${rawHost}' to '${host}'. Please fix your .env to avoid combined variable lines.`);
@@ -60,7 +66,11 @@ export async function sendBookingEmail(opts: { to: string; startISO: string; end
 
   const from = process.env.BOOKINGS_FROM_EMAIL || process.env.FROM_EMAIL || process.env.SMTP_FROM || "services@blueridge-ai.com";
   const mail: BookingEmail = { to: opts.to, subject: `Confirmed: ${opts.title}`, html };
-  await getTransporter().sendMail({ from, to: mail.to, subject: mail.subject, html: mail.html });
+  const info = await getTransporter().sendMail({ from, to: mail.to, subject: mail.subject, html: mail.html });
+  if ((process.env.SMTP_DEBUG || '').toLowerCase() === 'true') {
+    // eslint-disable-next-line no-console
+    console.log('[email] booking messageId', info?.messageId, 'accepted', info?.accepted, 'rejected', info?.rejected);
+  }
 }
 
 export async function sendOwnerNotificationEmail(opts: { to: string; customerName: string; customerEmail: string; startISO: string; endISO: string; title: string; description?: string }) {
@@ -79,5 +89,9 @@ export async function sendOwnerNotificationEmail(opts: { to: string; customerNam
     </ul>
     <p>Action: Manually add to your service@blueridge-ai.com calendar or reply to the customer to coordinate.</p>
   </div>`;
-  await getTransporter().sendMail({ from, to: opts.to, subject, html });
+  const info = await getTransporter().sendMail({ from, to: opts.to, subject, html });
+  if ((process.env.SMTP_DEBUG || '').toLowerCase() === 'true') {
+    // eslint-disable-next-line no-console
+    console.log('[email] owner notify messageId', info?.messageId, 'accepted', info?.accepted, 'rejected', info?.rejected);
+  }
 }

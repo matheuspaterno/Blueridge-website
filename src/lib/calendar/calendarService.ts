@@ -135,13 +135,29 @@ export async function discoverPrimaryCalendar() {
   if (cachedCalendar) return cachedCalendar;
   const client = await getClient();
   const cals = await client.fetchCalendars();
+  const DEBUG = (process.env.CALDAV_DEBUG || '').toLowerCase() === 'true';
   if (!Array.isArray(cals) || !cals.length) {
     console.warn('[CalDAV] No calendars returned');
     throw new Error('No CalDAV calendars found');
   }
-  // pick first writable (if property present) else first
-  cachedCalendar = cals.find((c: any) => c?.components?.includes('VEVENT')) || cals[0];
-  console.warn('[CalDAV] Using calendar', cachedCalendar?.displayName || cachedCalendar?.url || 'unknown');
+  if (DEBUG) {
+    try {
+      console.log('[CalDAV] calendars:', cals.map((c: any) => ({ displayName: c?.displayName, url: c?.url, components: c?.components }))); 
+    } catch {}
+  }
+  // Prefer explicit selection via env, then first with VEVENT support, else first
+  const wantName = process.env.CALDAV_CALENDAR_NAME?.toLowerCase();
+  const wantUrl = process.env.CALDAV_CALENDAR_URL?.toLowerCase();
+  if (wantUrl) {
+    cachedCalendar = cals.find((c: any) => String(c?.url || '').toLowerCase().includes(wantUrl));
+  }
+  if (!cachedCalendar && wantName) {
+    cachedCalendar = cals.find((c: any) => String(c?.displayName || '').toLowerCase() === wantName);
+  }
+  if (!cachedCalendar) {
+    cachedCalendar = cals.find((c: any) => c?.components?.includes('VEVENT')) || cals[0];
+  }
+  if (DEBUG) console.warn('[CalDAV] Using calendar', cachedCalendar?.displayName || cachedCalendar?.url || 'unknown');
   return cachedCalendar;
 }
 
@@ -285,7 +301,14 @@ export async function createEvent({ start, end, title, description, attendees, l
   }
   lines.push('END:VEVENT','END:VCALENDAR');
   const ics = lines.filter(Boolean).join('\r\n');
-  await client.createCalendarObject({ calendar: cal, filename: `${uid}.ics`, iCalString: ics });
+  const DEBUG = (process.env.CALDAV_DEBUG || '').toLowerCase() === 'true';
+  try {
+    await client.createCalendarObject({ calendar: cal, filename: `${uid}.ics`, iCalString: ics });
+    if (DEBUG) console.log('[CalDAV] Event created', { uid, start: start.toISOString(), end: end.toISOString() });
+  } catch (e: any) {
+    if (DEBUG) console.warn('[CalDAV] createCalendarObject failed:', e?.message || String(e));
+    throw e;
+  }
   return { uid };
 }
 

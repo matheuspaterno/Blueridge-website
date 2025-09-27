@@ -2,6 +2,7 @@
 import React from 'react'
 import Hero from '../components/Hero'
 import Banner from '../components/Banner'
+import VoiceAIBanner from '../components/VoiceAIBanner'
 
 
 export default function App() {
@@ -39,6 +40,9 @@ export default function App() {
           <section id="financials" className="mx-auto max-w-[96rem] py-12">
             <Banner />
           </section>
+
+          {/* Voice AI Banner duplicate removed (now injected higher in Hero). Keeping commented for potential future use. */}
+          {/** <VoiceAIBanner /> **/}
         </div>
 
         {/* Founder quote under the last banner, above the footer */}

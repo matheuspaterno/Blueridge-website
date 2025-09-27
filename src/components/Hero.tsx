@@ -1,6 +1,7 @@
 "use client";
 import React, { useRef } from 'react'
 import useVantaFog from '../hooks/useVantaFog'
+import { VoiceAIBanner } from './VoiceAIBanner'
 
 export default function Hero() {
   const fogRef = useRef<HTMLDivElement | null>(null)
@@ -32,7 +33,13 @@ export default function Hero() {
           className="block mx-auto mb-[50px] w-11/12 sm:w-3/4 md:w-1/2 lg:w-auto max-w-[300px] transform origin-center scale-[0.9] sm:scale-100"
         />
         <p className="max-w-3xl mx-auto text-white/90 text-lg leading-relaxed">
-          We create AI solutions that connect people and businesses more efficiently. Blueridge AI Agency blends innovation with local expertise to deliver responsible, intelligent tools that streamline operations and maximize results. </p>
+          We create AI solutions that connect people and businesses more efficiently. Blueridge AI Agency blends innovation with local expertise to deliver responsible, intelligent tools that streamline operations and maximize results.
+        </p>
+
+        {/* Inserted Voice AI banner between descriptive copy and next section */}
+        <div className="mt-10 flex justify-center">
+          <VoiceAIBanner />
+        </div>
 
   {/* Buttons removed as requested */}
       </div>
