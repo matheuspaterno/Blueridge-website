@@ -251,11 +251,13 @@ export async function POST(req: Request) {
         } catch (e: any) { return { ok: false, error: e?.message || String(e) }; }
       })();
       if (!create.ok) {
+        console.error("[chat] direct booking failed:", create.error);
         return NextResponse.json({
           content: "I ran into a problem booking that slot and couldn't confirm it — nothing has been scheduled yet. Could you try again in a moment, or let me know a different time?",
         });
       }
       if (!create.data?.customerEmailSent) {
+        console.error("[chat] direct booking event created but customer email failed:", JSON.stringify(create.data?.emailErrors));
         return NextResponse.json({
           content: "You're booked in for that time, but I wasn't able to send the confirmation email — please double-check the address you gave me, or reach out if you don't see it shortly.",
         });
@@ -601,9 +603,12 @@ export async function POST(req: Request) {
                 const payload: any = { start: args.startISO, durationMins: duration, name: attendee?.name, email: attendee?.email, notes: args.description };
                 const r = await fetch(baseUrl + "/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 const j = await r.json().catch(() => ({}));
-                toolResult = (r.ok && j?.eventCreated) ? { ok: true, data: j } : { ok: true, data: j };
+                toolResult = (r.ok && j?.eventCreated) ? { ok: true, data: j } : { ok: false, data: j, error: j?.error || j?.calendarError || "booking not confirmed" };
+                if (!toolResult.ok) console.error("[chat] createAppointment tool call failed:", toolResult.error, JSON.stringify(j));
               } catch (e: any) {
-                toolResult = { ok: true, data: { eventCreated: false, error: e?.message || String(e) } };
+                const msg = e?.message || String(e);
+                console.error("[chat] createAppointment tool call threw:", msg);
+                toolResult = { ok: false, data: { eventCreated: false }, error: msg };
               }
             }
           } else if (name === "cancelAppointment") {
