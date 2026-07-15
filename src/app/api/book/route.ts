@@ -51,6 +51,18 @@ export async function POST(req: Request) {
     eventCreated = true;
     uid = 'caldav-disabled-for-testing';
 
+    let meetingSaved = false;
+    try {
+      // Lazy-load so a missing/misconfigured Supabase env doesn't break booking entirely.
+      const supa = await import('@/lib/supabase');
+      await supa.createMeetingRow({ calendar_event_id: uid || undefined, start_ts: start.toISOString(), end_ts: end.toISOString(), title, notes: description });
+      meetingSaved = true;
+      if (DEBUG) console.log('[booking] meeting row saved');
+    } catch (e: any) {
+      const msg = e?.message || String(e);
+      console.error('[booking] failed to save meeting row:', msg);
+    }
+
     let customerEmailSent = false;
     let ownerEmailSent = false;
     let emailErrors: string[] = [];
@@ -89,7 +101,7 @@ export async function POST(req: Request) {
         }
       }
     }
-  const responsePayload = { ok: true, uid, eventCreated, customerEmailSent, ownerEmailSent, calendarError, emailErrors: emailErrors.length ? emailErrors : undefined };
+  const responsePayload = { ok: true, uid, eventCreated, meetingSaved, customerEmailSent, ownerEmailSent, calendarError, emailErrors: emailErrors.length ? emailErrors : undefined };
   if (DEBUG) console.log('[booking] response', responsePayload);
   return NextResponse.json(responsePayload);
   } catch (e: any) {
