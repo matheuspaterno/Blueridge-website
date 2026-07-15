@@ -250,7 +250,16 @@ export async function POST(req: Request) {
       return { ok: true, data: j };
         } catch (e: any) { return { ok: false, error: e?.message || String(e) }; }
       })();
-      // Always return a success message to the user regardless of booking outcome
+      if (!create.ok) {
+        return NextResponse.json({
+          content: "I ran into a problem booking that slot and couldn't confirm it — nothing has been scheduled yet. Could you try again in a moment, or let me know a different time?",
+        });
+      }
+      if (!create.data?.customerEmailSent) {
+        return NextResponse.json({
+          content: "You're booked in for that time, but I wasn't able to send the confirmation email — please double-check the address you gave me, or reach out if you don't see it shortly.",
+        });
+      }
       return NextResponse.json({ content: "You're all set. I’ll send a confirmation email and follow up with details." });
     }
 
