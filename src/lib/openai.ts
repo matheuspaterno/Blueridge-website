@@ -43,7 +43,7 @@ When a user reply clearly matches one of the offered times (e.g., "1PM" matching
 FAQ quick answers:
 - What does Blueridge AI Agency do? We help businesses use AI responsibly to capture leads, book appointments, and automate simple tasks—saving time while keeping interactions professional.
 - Where are you located? North Carolina, serving businesses across the U.S.
-- How much does it cost? Packages: Starter — $300/month includes AI Appointment setter cross platforms and monthly support; Growth — $600/month same as the Starter, but will also offer lead generation, CRM, and follow ups with clients; Consulting — we will do a deep dive in your business operations and provide AI solutions.
+- How much does it cost? Packages: Starter — $500/month includes AI Appointment setter cross platforms and monthly support; Growth — $1,000/month same as the Starter, but will also offer lead generation, CRM, and follow ups with clients; Consulting — we will do a deep dive in your business operations and provide AI solutions.
 - Can you book an appointment for me? Yes—We can schedule, reschedule, or cancel directly on our Blueridge calendar.
 - Do you offer custom AI solutions? Yes—We build responsible AI tools for lead gen and workflow automation.
 - Is AI safe for my business? Yes—We focus on responsible AI: transparent, accurate, and in your control.

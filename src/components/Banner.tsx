@@ -133,7 +133,7 @@ export default function Banner() {
                 {/* Starter */}
                 <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6 flex flex-col">
                   <h3 className="text-white font-semibold text-lg">
-                    Starter <span className="text-white/90 font-normal">— $300/month</span>
+                    Starter <span className="text-white/90 font-normal">— $500/month</span>
                   </h3>
                   <ul className="mt-3 space-y-2 text-white/90 text-sm leading-relaxed">
                     <li className="flex gap-2"><span>•</span><span>AI assistant that books appointments 24/7</span></li>
@@ -147,7 +147,7 @@ export default function Banner() {
                 {/* Growth */}
                 <div className="rounded-2xl bg-white/5 backdrop-blur-sm border border-white/10 p-5 sm:p-6 flex flex-col">
                   <h3 className="text-white font-semibold text-lg">
-                    Growth <span className="text-white/90 font-normal">— $600/month</span>
+                    Growth <span className="text-white/90 font-normal">— $1,000/month</span>
                   </h3>
                   <ul className="mt-3 space-y-2 text-white/90 text-sm leading-relaxed">
                     <li className="flex gap-2"><span>•</span><span>Everything in Starter</span></li>
