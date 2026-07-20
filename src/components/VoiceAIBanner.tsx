@@ -15,7 +15,7 @@ import { BlueRidgeVoiceAura } from "./BlueRidgeVoiceAura";
  * Required server env:
  *  - OPENAI_API_KEY (never exposed client-side)
  * Optional public env overrides (else defaults applied server-side):
- *  - NEXT_PUBLIC_OPENAI_REALTIME_MODEL (e.g. gpt-4o-realtime-preview)
+ *  - NEXT_PUBLIC_OPENAI_REALTIME_MODEL (e.g. gpt-realtime-1.5)
  *  - NEXT_PUBLIC_OPENAI_VOICE (e.g. verse)
  *
  * Local testing:
@@ -918,11 +918,11 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
       });
       const json: EphemeralSessionResp = await res.json();
       if (!res.ok) throw new Error(json?.error || res.statusText);
-      const key = json?.client_secret?.value;
+      const key = json?.client_secret?.value || (json as any)?.value;
       if (!key) throw new Error("Ephemeral key missing in response");
       pushDebug("Ephemeral session acquired");
       // Capture model from session if present
-      sessionModelRef.current = (json as any)?.model || sessionModelRef.current;
+      sessionModelRef.current = (json as any)?.model || (json as any)?.session?.model || sessionModelRef.current;
       sessionKeyRef.current = key;
       return key;
     } catch (e: any) {
@@ -1079,11 +1079,11 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
       };
       pc.addEventListener('icegatheringstatechange', handler);
     });
-    const model = sessionModelRef.current || process.env.NEXT_PUBLIC_OPENAI_REALTIME_MODEL || 'gpt-4o-realtime-preview';
+    const model = sessionModelRef.current || process.env.NEXT_PUBLIC_OPENAI_REALTIME_MODEL || 'gpt-realtime-1.5';
     pushDebug(`Sending SDP offer (model=${model})`);
-    const sdpRes = await fetch(`https://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`, {
+    const sdpRes = await fetch('https://api.openai.com/v1/realtime/calls', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/sdp', 'OpenAI-Beta': 'realtime=v1' },
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/sdp' },
       body: pc.localDescription?.sdp || ''
     });
     const answerSdp = await sdpRes.text();
@@ -1295,11 +1295,9 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
           <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">Talk to Rick for quick answers.</p>
           */}
 
-            {/* Sanitized error display (still logged internally)
             {error && (
               <div className="mt-4 text-xs text-red-600 dark:text-red-400" role="alert">{error}</div>
             )}
-            */}
 
           <div className="mt-10 flex flex-col items-center gap-6">
             <div className="flex flex-col items-center">
@@ -1340,7 +1338,7 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
               className="text-xs px-4 py-2 rounded-full bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 transition"
             >{isMuted ? "Unmute" : "Mute"}</button>
             {/* Conditional session control: show Start (green) before session, End (red) once active */}
-            {connState === 'disconnected' ? (
+            {connState === 'disconnected' || connState === 'error' ? (
               <button
                 type="button"
                 onClick={startListening}

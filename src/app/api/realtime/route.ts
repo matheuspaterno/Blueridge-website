@@ -3,12 +3,12 @@ import { NextResponse } from "next/server";
 /**
  * POST /api/realtime
  * Creates an ephemeral OpenAI Realtime session key by forwarding a request to
- * OpenAI's /v1/realtime/sessions endpoint. Never expose the primary OPENAI_API_KEY
+ * OpenAI's /v1/realtime/client_secrets endpoint. Never expose the primary OPENAI_API_KEY
  * to the client; the client will receive only the ephemeral session JSON.
  *
  * Environment variables:
  *  - OPENAI_API_KEY (server secret)
- *  - NEXT_PUBLIC_OPENAI_REALTIME_MODEL (optional, default: gpt-4o-realtime-preview)
+ *  - NEXT_PUBLIC_OPENAI_REALTIME_MODEL (optional, default: gpt-realtime-1.5)
  *  - NEXT_PUBLIC_OPENAI_VOICE (optional, default: verse)
  *
  * Request JSON body (all optional):
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Server misconfigured: OPENAI_API_KEY not set" }, { status: 500 });
   }
 
-  const defaultModel = process.env.NEXT_PUBLIC_OPENAI_REALTIME_MODEL || "gpt-4o-realtime-preview";
+  const defaultModel = process.env.NEXT_PUBLIC_OPENAI_REALTIME_MODEL || "gpt-realtime-1.5";
   const defaultVoice = process.env.NEXT_PUBLIC_OPENAI_VOICE || "verse";
 
   let body: any = {};
@@ -34,9 +34,6 @@ export async function POST(req: Request) {
   }
 
   const voice = typeof body.voice === "string" && body.voice.trim() ? body.voice.trim() : defaultVoice;
-  const modalities = Array.isArray(body.modalities) && body.modalities.every((m: any) => typeof m === "string")
-    ? body.modalities
-    : ["audio", "text"];
   // If caller didn't provide custom instructions, build a voice-optimized Rick system prompt
   const instructions = (() => {
     if (typeof body.instructions === "string" && body.instructions.trim()) return body.instructions.trim();
@@ -54,18 +51,19 @@ export async function POST(req: Request) {
   })();
 
   try {
-    const upstream = await fetch("https://api.openai.com/v1/realtime/sessions", {
+    const upstream = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
-        "OpenAI-Beta": "realtime=v1",
       },
       body: JSON.stringify({
-        model: defaultModel,
-        voice,
-        modalities,
-        instructions,
+        session: {
+          type: "realtime",
+          model: defaultModel,
+          instructions,
+          audio: { output: { voice } },
+        },
       }),
     });
 
@@ -78,7 +76,7 @@ export async function POST(req: Request) {
     }
 
     // Return the ephemeral session object directly. It should contain `client_secret.value` or similar per OpenAI docs.
-    return NextResponse.json(json);
+    return NextResponse.json({ ...json, model: json?.session?.model || defaultModel });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Failed to create realtime session" }, { status: 500 });
   }
