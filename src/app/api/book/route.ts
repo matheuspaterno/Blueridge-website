@@ -35,21 +35,16 @@ export async function POST(req: Request) {
     let uid: string | null = null;
     let eventCreated = false;
     let calendarError: string | null = null;
-    // TEMPORARY: CalDAV is disabled while we test email delivery in isolation
-    // (new mailbox's CalDAV setup isn't confirmed working yet). Re-enable by
-    // restoring the createEvent(...) call below.
-    // try {
-    //   const created = await createEvent({ start, end, title, description, attendees: email ? [{ name, email }] : undefined, location: 'Online' });
-    //   uid = created.uid;
-    //   eventCreated = true;
-    //   if (DEBUG) console.log('[booking] calendar event created', uid);
-    // } catch (ce: any) {
-    //   calendarError = ce?.message || String(ce);
-    //   if (DEBUG) console.warn('[booking] calendar create failed', calendarError);
-    //   if (STRICT) return NextResponse.json({ error: calendarError || 'calendar create failed' }, { status: 500 });
-    // }
-    eventCreated = true;
-    uid = 'caldav-disabled-for-testing';
+    try {
+      const created = await createEvent({ start, end, title, description, attendees: email ? [{ name, email }] : undefined, location: 'Online' });
+      uid = created.uid;
+      eventCreated = true;
+      if (DEBUG) console.log('[booking] calendar event created', uid);
+    } catch (ce: any) {
+      calendarError = ce?.message || String(ce);
+      if (DEBUG) console.warn('[booking] calendar create failed', calendarError);
+      if (STRICT) return NextResponse.json({ error: calendarError || 'calendar create failed' }, { status: 500 });
+    }
 
     let meetingSaved = false;
     try {
@@ -66,7 +61,7 @@ export async function POST(req: Request) {
     let customerEmailSent = false;
     let ownerEmailSent = false;
     let emailErrors: string[] = [];
-    if (process.env.SMTP_HOST && email) {
+    if ((process.env.RESEND_API_KEY || process.env.SMTP_HOST) && email) {
       try {
   await sendBookingEmail({ to: email, startISO: start.toISOString(), endISO: end.toISOString(), title });
   if (DEBUG) console.log('[booking] customer email queued');

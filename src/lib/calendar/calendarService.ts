@@ -162,6 +162,10 @@ export async function discoverPrimaryCalendar() {
 }
 
 export async function getEventsInRange({ start, end }: { start: Date; end: Date; }): Promise<CalendarEvent[]> {
+  if ((process.env.CALENDAR_PROVIDER || "caldav").toLowerCase() === "google") {
+    const { getGoogleEventsInRange } = await import("./googleCalendarService");
+    return getGoogleEventsInRange({ start, end });
+  }
   const cal = await discoverPrimaryCalendar();
   const client = await getClient();
   const objects = await client.fetchCalendarObjects({ calendar: cal });
@@ -271,6 +275,10 @@ export async function generateSlots(opts: SlotGenOpts) {
 }
 
 export async function createEvent({ start, end, title, description, attendees, location }: CreateEventOpts) {
+  if ((process.env.CALENDAR_PROVIDER || "caldav").toLowerCase() === "google") {
+    const { createGoogleEvent } = await import("./googleCalendarService");
+    return createGoogleEvent({ start, end, title, description, attendees, location });
+  }
   const cal = await discoverPrimaryCalendar();
   const client = await getClient();
   const uid = uuidv4();
