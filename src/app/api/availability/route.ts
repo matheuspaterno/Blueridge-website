@@ -99,7 +99,10 @@ export async function GET(req: Request) {
       }
     } catch (err: any) {
       phase.push('error:' + (err?.message || 'unknown'));
-      // swallow and proceed to fabrication
+      if ((process.env.CALENDAR_PROVIDER || 'caldav').toLowerCase() === 'google') {
+        return NextResponse.json({ error: 'Calendar availability is temporarily unavailable', phases: phase }, { status: 503 });
+      }
+      // Legacy CalDAV mode may still use fabricated slots while being configured.
     }
     if (!slots.length) {
       const fabricated: Date[] = fabricateSlots({ from, durationMins, businessHours, maxDays: 14 });

@@ -23,8 +23,7 @@ export async function POST(req: Request) {
     } catch (calErr: any) {
       const msg = calErr?.message || String(calErr);
       if (DEBUG) console.warn('[booking] isBusyRange failed', msg);
-      // Do not hard fail unless STRICT; treat as free to allow degraded booking
-      if (STRICT) return NextResponse.json({ error: 'calendar availability check failed: ' + msg }, { status: 500 });
+      return NextResponse.json({ error: 'calendar availability check failed: ' + msg }, { status: 503 });
     }
     if (busy) return NextResponse.json({ error: 'slot taken' }, { status: 409 });
     const name: string | undefined = body.name;
@@ -43,7 +42,7 @@ export async function POST(req: Request) {
     } catch (ce: any) {
       calendarError = ce?.message || String(ce);
       if (DEBUG) console.warn('[booking] calendar create failed', calendarError);
-      if (STRICT) return NextResponse.json({ error: calendarError || 'calendar create failed' }, { status: 500 });
+      return NextResponse.json({ error: calendarError || 'calendar create failed', eventCreated: false }, { status: 502 });
     }
 
     let meetingSaved = false;

@@ -78,6 +78,8 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
   const [introDone, setIntroDone] = useState(false);
   const [pendingDateConfirm, setPendingDateConfirm] = useState<string | null>(null); // (legacy) no longer used for yes/no flow
   const [confirmedDate, setConfirmedDate] = useState<Date | null>(null);
+  const [offeredSlots, setOfferedSlots] = useState<string[]>([]);
+  const [awaitingTimeSelection, setAwaitingTimeSelection] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   // Track when email last updated (watchdog assistance)
@@ -88,6 +90,7 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
   const [userPhone, setUserPhone] = useState<string | null>(null);
   const [waitingForPhone, setWaitingForPhone] = useState(false);
   const [bookingComplete, setBookingComplete] = useState(false);
+  const bookingInFlightRef = useRef(false);
   // Spelled email buffering (captures letters across multiple utterances until full domain provided)
   const spelledLocalRef = useRef<string>('');
   const spellingActiveRef = useRef<boolean>(true); // active until we capture a solid email
@@ -524,6 +527,61 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
   function fmtPretty(d: Date) {
     return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday:'long', month:'long', day:'numeric'}).format(d);
   }
+  function fmtSlot(iso: string) {
+    return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour:'numeric', minute:'2-digit', hour12:true }).format(new Date(iso));
+  }
+  function matchOfferedSlot(raw: string, slots: string[]): string | null {
+    const normalized = raw.toLowerCase().replace(/a\.m\./g, 'am').replace(/p\.m\./g, 'pm');
+    const wordHours: Record<string, number> = { one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12 };
+    const numeric = normalized.match(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(am|pm)?\b/);
+    let requestedHour = numeric ? Number(numeric[1]) : null;
+    let requestedMinute = numeric?.[2] ? Number(numeric[2]) : 0;
+    const requestedAmpm = numeric?.[3] || (normalized.includes('morning') ? 'am' : /afternoon|evening/.test(normalized) ? 'pm' : null);
+    if (requestedHour === null) {
+      const word = Object.keys(wordHours).find((value) => new RegExp(`\\b${value}\\b`).test(normalized));
+      if (word) requestedHour = wordHours[word];
+      if (/\bthirty\b|half past/.test(normalized)) requestedMinute = 30;
+    }
+    if (requestedHour === null) return null;
+    const matches = slots.filter((iso) => {
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone:'America/New_York', hour:'numeric', minute:'2-digit', hour12:true }).formatToParts(new Date(iso));
+      const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+      const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+      const ampm = parts.find((part) => part.type === 'dayPeriod')?.value.toLowerCase();
+      return hour === requestedHour && minute === requestedMinute && (!requestedAmpm || ampm === requestedAmpm);
+    });
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  async function offerAvailability(day: Date) {
+    const tz = 'America/New_York';
+    const from = new Date(day.getTime() - 12*60*60*1000).toISOString();
+    const to = new Date(day.getTime() + 36*60*60*1000).toISOString();
+    try {
+      const res = await fetch(`/api/availability?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&durationMins=30`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || 'availability unavailable');
+      const targetEtDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit' }).format(day);
+      const slots = (Array.isArray(body?.slots) ? body.slots : [])
+        .filter((iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date(iso)) === targetEtDate)
+        .slice(0, 3);
+      if (!slots.length) {
+        setAwaitingTimeSelection(false);
+        setOfferedSlots([]);
+        sendAssistantSpeech(`I don't see an available time on ${fmtPretty(day)}. Please choose another weekday.`);
+        return;
+      }
+      setPendingDateConfirm(day.toISOString());
+      setOfferedSlots(slots);
+      setAwaitingTimeSelection(true);
+      sendAssistantSpeech(`For ${fmtPretty(day)}, I have ${slots.map(fmtSlot).join(', ')}. Which time works best?`);
+    } catch (e: any) {
+      setAwaitingTimeSelection(false);
+      setOfferedSlots([]);
+      sendAssistantSpeech(`I can't reach the booking calendar right now, so I won't offer an unverified time. Please try again shortly.`);
+      pushDebug('Voice availability failed: '+(e?.message || e));
+    }
+  }
   function spellEmail(e: string): string {
     const parts = e.split('@');
     if (parts.length !== 2) return e;
@@ -595,72 +653,35 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
   function proposeEmail(_email: string, _origin: string) { pushDebug('proposeEmail noop under new direct-spell flow'); }
   async function attemptBooking() {
     // Defer booking if phone step still active so user can supply phone
-    if (!confirmedDate || !userName || !userEmail || bookingComplete || waitingForPhone) return;
+    if (!confirmedDate || !userName || !userEmail || bookingComplete || waitingForPhone || bookingInFlightRef.current) return;
+    bookingInFlightRef.current = true;
     pushDebug(`Booking prerequisites: date=${confirmedDate.toISOString()} name=${userName} email=${userEmail} phone=${userPhone||'none'}`);
     pushTranscript({ role:'assistant', text:'Great, sending your confirmation now...', ts: Date.now() });
     try {
-      const EMAIL_ONLY_MODE = true; // Always true per user request to bypass calendar and just send emails.
       const tz = 'America/New_York';
-      const day = confirmedDate;
-      let startISO: string | null = null;
-      let fallbackUsed = false;
-      try {
-        pushDebug('Attempting availability fetch for booking');
-        const from = new Date(day.getTime() - 12*60*60*1000).toISOString();
-        const to = new Date(day.getTime() + 36*60*60*1000).toISOString();
-        const availUrl = `/api/availability?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&durationMins=30`;
-        const availRes = await fetch(availUrl);
-        const availJson = await availRes.json().catch(()=>({}));
-        let slots: Array<string> = Array.isArray(availJson?.slots) ? availJson.slots : [];
-        const targetEtDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit' }).format(day);
-        slots = slots.filter(s => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date(s)) === targetEtDate);
-        if (slots.length) {
-          startISO = slots[0];
-          pushDebug('Booking earliest real slot: '+startISO);
-        }
-      } catch (inner:any) {
-        pushDebug('Availability fetch failed: '+ (inner?.message||inner));
-      }
-      if (!startISO) {
-        fallbackUsed = true;
-        const now = new Date();
-        const synthetic = new Date(day.getTime());
-        synthetic.setHours(14,0,0,0); // Aim for 2 PM ET
-        if (synthetic < now) {
-          const adj = new Date(now.getTime() + 60*60*1000);
-          adj.setMinutes(0,0,0);
-          synthetic.setTime(adj.getTime());
-        }
-        startISO = synthetic.toISOString();
-        pushDebug('Using fallback synthetic slot: '+startISO);
-      }
+      const startISO = confirmedDate.toISOString();
       const start = new Date(startISO);
       const notesParts = ['Voice AI booking'];
       if (userPhone) notesParts.push('Phone: '+userPhone);
-      if (EMAIL_ONLY_MODE) {
-        // Direct email-only notification
-        const emailPayload = { startISO, durationMins:30, name: userName, email: userEmail, phone: userPhone || undefined, notes: notesParts.join(' | ') };
-        const res = await fetch('/api/email/simple-book', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(emailPayload) });
-        const j = await res.json().catch(()=>({}));
-        pushDebug('Email-only booking response: '+ JSON.stringify(j));
-        const pretty = new Intl.DateTimeFormat('en-US',{ timeZone: tz, weekday:'long', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true }).format(start);
-        if (res.ok && (j?.customerEmailSent || j?.ownerEmailSent)) {
-          const emailNote = j?.customerEmailSent ? 'Confirmation email sent.' : '';
-          const ownerNote = j?.ownerEmailSent ? '' : ' (Owner email may have failed)';
-          const sourceNote = fallbackUsed ? ' (Provisional time used.)' : '';
-          pushTranscript({ role:'assistant', text: `All set ${userName}! I noted ${pretty} ET. ${emailNote}${ownerNote}${sourceNote}`, ts: Date.now() });
-        } else {
-          const apiErrNote = j?.errors ? ` (${Array.isArray(j.errors) ? j.errors.join('; ') : j.errors})` : '';
-          pushTranscript({ role:'assistant', text: `I captured your details but the email may not have sent${apiErrNote}. I'll follow up manually if needed.`, ts: Date.now() });
-          pushDebug('Email-only route failure '+ JSON.stringify(j));
-        }
-        return; // Skip calendar path entirely
+      const payload = { start: startISO, durationMins:30, name: userName, email: userEmail, phone: userPhone || undefined, notes: notesParts.join(' | ') };
+      const res = await fetch('/api/book', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const j = await res.json().catch(()=>({}));
+      pushDebug('Voice booking response: '+ JSON.stringify(j));
+      const pretty = new Intl.DateTimeFormat('en-US',{ timeZone: tz, weekday:'long', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true }).format(start);
+      if (res.ok && j?.eventCreated && j?.customerEmailSent) {
+        pushTranscript({ role:'assistant', text: `All set ${userName}! You're booked for ${pretty} ET, and your confirmation email was sent.`, ts: Date.now() });
+      } else if (res.ok && j?.eventCreated) {
+        pushTranscript({ role:'assistant', text: `You're booked for ${pretty} ET, but I couldn't send the confirmation email. Please contact us if you need the details.`, ts: Date.now() });
+      } else {
+        const reason = j?.error || j?.calendarError || 'booking was not confirmed';
+        pushTranscript({ role:'assistant', text: `I couldn't confirm that appointment, so nothing was booked. Please try another time or contact us directly.`, ts: Date.now() });
+        pushDebug('Voice booking failed: '+reason);
       }
-      // (Calendar/email path retained but unreachable with EMAIL_ONLY_MODE=true)
     } catch (e:any) {
       pushDebug('Booking exception: '+ (e?.message||e));
-      pushTranscript({ role:'assistant', text: 'Something went wrong booking that. I will email you to finalize.', ts: Date.now() });
+      pushTranscript({ role:'assistant', text: 'Something went wrong, so nothing was booked. Please try again shortly.', ts: Date.now() });
     } finally {
+      bookingInFlightRef.current = false;
       setBookingComplete(true);
     }
   }
@@ -728,14 +749,35 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
           return;
         }
       }
+      if (awaitingTimeSelection && offeredSlots.length) {
+        const replacementWeekday = extractWeekday(latestUser);
+        if (replacementWeekday) {
+          const replacementDay = nextOccurrence(replacementWeekday);
+          setOfferedSlots([]);
+          setAwaitingTimeSelection(false);
+          void offerAvailability(replacementDay);
+          return;
+        }
+        const selectedSlot = matchOfferedSlot(latestUser, offeredSlots);
+        if (!selectedSlot) {
+          sendAssistantSpeech(`Please choose one of these times: ${offeredSlots.map(fmtSlot).join(', ')}.`);
+          return;
+        }
+        const selectedDate = new Date(selectedSlot);
+        setConfirmedDate(selectedDate);
+        setPendingDateConfirm(null);
+        setOfferedSlots([]);
+        setAwaitingTimeSelection(false);
+        setWaitingForPhone(true);
+        sendAssistantSpeech(`Great, ${fmtSlot(selectedSlot)} on ${fmtPretty(selectedDate)}. Please give me your first name, spell your email letter by letter, and provide a phone number or say skip.`);
+        return;
+      }
       if (!confirmedDate) {
         const wd = extractWeekday(latestUser);
         if (wd) {
           const dt = nextOccurrence(wd);
-          setConfirmedDate(dt);
-          setPendingDateConfirm(null);
-            setWaitingForPhone(true); // reuse as general multi-field capture gate
-            pushTranscript({ role:'assistant', text:`Great—I'll target next ${fmtPretty(dt)}. If that's not right just say another weekday. Please give me your first name, then spell your email letter by letter (e.g. j o h n at gmail dot com), and your phone number if you want to add it— or say skip for no phone. You can say them all in one go.`, ts: Date.now() });
+          setPendingDateConfirm(dt.toISOString());
+          void offerAvailability(dt);
           return;
         }
       } else if (confirmedDate && !userName) {
@@ -743,8 +785,9 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
         const wd2 = extractWeekday(latestUser);
         if (wd2) {
           const dt2 = nextOccurrence(wd2);
-          setConfirmedDate(dt2);
-            pushTranscript({ role:'assistant', text:`Updated to ${fmtPretty(dt2)}. Please provide your first name, spelled email, and phone (or say skip).`, ts: Date.now() });
+          setConfirmedDate(null);
+          setPendingDateConfirm(dt2.toISOString());
+          void offerAvailability(dt2);
           return;
         }
       }
@@ -836,7 +879,7 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
   pushTranscript({ role:'assistant', text:'Anything else I can help with today?', ts: Date.now() });
       }
     };
-  }, [introDone, confirmedDate, pendingDateConfirm, userName, userEmail, userPhone, waitingForPhone, bookingComplete]);
+  }, [introDone, confirmedDate, pendingDateConfirm, offeredSlots, awaitingTimeSelection, userName, userEmail, userPhone, waitingForPhone, bookingComplete]);
 
   // Step capture instrumentation
   useEffect(() => { if (userName) pushDebug('State update: userName='+userName); }, [userName]);
