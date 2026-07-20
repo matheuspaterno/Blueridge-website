@@ -340,9 +340,18 @@ export async function POST(req: Request) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ start: iso, durationMins: 30, name: contact.name, email: contact.email, notes: "Requested via chat" })
               });
-              await r.json().catch(() => ({}));
-            } catch (_) {
-              // swallow errors; still return success message to the user
+              const booking = await r.json().catch(() => ({}));
+              if (!r.ok || !booking?.eventCreated) {
+                console.error("[chat] booking failed:", booking?.error || r.statusText, JSON.stringify(booking));
+                return NextResponse.json({ content: "I couldn't complete that booking just now. Please try again in a moment." });
+              }
+              if (!booking?.customerEmailSent) {
+                console.error("[chat] booking completed but customer email failed:", JSON.stringify(booking?.emailErrors));
+                return NextResponse.json({ content: "Your booking was recorded, but I couldn't send the confirmation email. Please verify your email address or contact us directly." });
+              }
+            } catch (e: any) {
+              console.error("[chat] booking request threw:", e?.message || String(e));
+              return NextResponse.json({ content: "I couldn't complete that booking just now. Please try again in a moment." });
             }
             return NextResponse.json({ content: "You're all set. I’ll send a confirmation email shortly." });
           }
@@ -603,7 +612,11 @@ export async function POST(req: Request) {
                 const payload: any = { start: args.startISO, durationMins: duration, name: attendee?.name, email: attendee?.email, notes: args.description };
                 const r = await fetch(baseUrl + "/api/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                 const j = await r.json().catch(() => ({}));
-                toolResult = (r.ok && j?.eventCreated) ? { ok: true, data: j } : { ok: false, data: j, error: j?.error || j?.calendarError || "booking not confirmed" };
+                const bookingSucceeded = r.ok && j?.eventCreated && j?.customerEmailSent;
+                const emailError = Array.isArray(j?.emailErrors) ? j.emailErrors.join("; ") : undefined;
+                toolResult = bookingSucceeded
+                  ? { ok: true, data: j }
+                  : { ok: false, data: j, error: emailError || j?.error || j?.calendarError || "booking or confirmation email not completed" };
                 if (!toolResult.ok) console.error("[chat] createAppointment tool call failed:", toolResult.error, JSON.stringify(j));
               } catch (e: any) {
                 const msg = e?.message || String(e);

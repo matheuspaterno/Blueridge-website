@@ -3,6 +3,9 @@ import { sendBookingEmail, sendOwnerNotificationEmail } from '@/lib/email';
 
 export async function GET(req: Request) {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ ok: false, error: 'not found' }, { status: 404 });
+    }
     const url = new URL(req.url);
     const to = url.searchParams.get('to') || process.env.TEST_EMAIL_TO || process.env.FROM_EMAIL || 'services@blueridge-ai.com';
     const name = url.searchParams.get('name') || 'Test User';

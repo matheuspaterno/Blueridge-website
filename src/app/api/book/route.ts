@@ -100,6 +100,10 @@ export async function POST(req: Request) {
           if (STRICT) return NextResponse.json({ error: 'owner notify failed: ' + msg }, { status: 500 });
         }
       }
+    } else if (!email) {
+      emailErrors.push('customer:email address missing');
+    } else {
+      emailErrors.push('customer:SMTP_HOST is not configured');
     }
   const responsePayload = { ok: true, uid, eventCreated, meetingSaved, customerEmailSent, ownerEmailSent, calendarError, emailErrors: emailErrors.length ? emailErrors : undefined };
   if (DEBUG) console.log('[booking] response', responsePayload);

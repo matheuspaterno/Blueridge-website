@@ -3,6 +3,9 @@ import nodemailer from 'nodemailer';
 
 export async function GET() {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ ok: false, error: 'not found' }, { status: 404 });
+    }
     const host = process.env.SMTP_HOST;
     const port = Number(process.env.SMTP_PORT || 465);
     const user = process.env.SMTP_USER;
