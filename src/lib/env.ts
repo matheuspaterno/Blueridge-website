@@ -19,6 +19,9 @@ const schema = z.object({
   FROM_EMAIL: z.string().optional(),
   BOOKINGS_FROM_EMAIL: z.string().email().optional(),
   OWNER_NOTIFY_EMAIL: z.string().email().optional(),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  RESEND_FROM_EMAIL: z.string().min(1).optional(),
+  RESEND_REPLY_TO: z.string().email().optional(),
   AI_MODEL_ONLY: z.string().optional(),
 });
 
