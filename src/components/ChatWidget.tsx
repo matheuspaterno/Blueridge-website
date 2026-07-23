@@ -53,16 +53,32 @@ export default function ChatWidget() {
 
   return (
     <>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-6 right-6 rounded-full bg-blue-600 text-white px-4 py-3 shadow-lg hover:bg-blue-700 z-50"
-        aria-label={open ? 'Close chat' : 'Chat with Rick'}
-      >
-        {open ? "Close" : "Chat with Rick"}
-      </button>
+      <div className="fixed bottom-4 right-3 z-50 sm:bottom-6 sm:right-6">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="group flex w-28 flex-col items-center gap-2 rounded-2xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300/70 sm:w-32"
+          aria-label={open ? "Close chat with Rick" : "Chat with Rick"}
+          aria-expanded={open}
+        >
+          {!open && (
+            <span className="aspect-square w-full overflow-hidden rounded-2xl border-2 border-white bg-white shadow-xl transition duration-200 group-hover:-translate-y-0.5 group-hover:shadow-2xl">
+              <img
+                src="/Rick.jpg"
+                alt=""
+                aria-hidden="true"
+                className="h-full w-full object-cover"
+                loading="eager"
+              />
+            </span>
+          )}
+          <span className="w-full whitespace-nowrap rounded-full bg-blue-600 px-2 py-2.5 text-center text-sm font-semibold text-white shadow-lg transition-colors group-hover:bg-blue-700 sm:py-3 sm:text-base">
+            {open ? "Close" : "Chat with Rick"}
+          </span>
+        </button>
+      </div>
 
       {open && (
-        <div className="fixed bottom-20 right-6 w-[min(24rem,90vw)] h-[28rem] rounded-2xl bg-white shadow-2xl border border-gray-200 flex flex-col overflow-hidden z-40">
+        <div className="fixed bottom-20 right-3 z-40 flex h-[min(28rem,calc(100dvh-6rem))] w-[calc(100vw-1.5rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl sm:bottom-24 sm:right-6">
           <div className="px-4 py-3 border-b bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
             <div className="flex items-center gap-3">
               <img
