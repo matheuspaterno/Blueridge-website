@@ -1,5 +1,68 @@
 import { NextResponse } from "next/server";
 
+const bookingTools = [
+  {
+    type: "function",
+    name: "check_availability",
+    description: "Check the live Blueridge calendar before offering appointment times. Call this for every requested date, including today, tomorrow, or a weekday.",
+    parameters: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description: "Requested calendar date in America/New_York, formatted YYYY-MM-DD.",
+        },
+        durationMins: {
+          type: "integer",
+          description: "Appointment length in minutes. Use 30 unless the user requests another supported length.",
+        },
+        timeOfDay: {
+          type: "string",
+          enum: ["morning", "afternoon", "any"],
+          description: "The user's preferred part of the day, or any.",
+        },
+      },
+      required: ["date"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "book_appointment",
+    description: "Book a user-confirmed appointment time returned by check_availability and send the confirmation email. Collect the user's name and email before calling.",
+    parameters: {
+      type: "object",
+      properties: {
+        startISO: {
+          type: "string",
+          description: "Exact ISO start timestamp previously returned by check_availability.",
+        },
+        durationMins: {
+          type: "integer",
+          description: "Appointment length in minutes. Must match the availability check; normally 30.",
+        },
+        name: { type: "string", description: "Customer's full name." },
+        email: { type: "string", description: "Customer's email address." },
+        phone: { type: "string", description: "Customer's phone number, if provided." },
+        notes: { type: "string", description: "Optional short booking notes." },
+      },
+      required: ["startISO", "name", "email"],
+      additionalProperties: false,
+    },
+  },
+] as const;
+
+function etDateString(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
 /**
  * POST /api/realtime
  * Creates an ephemeral OpenAI Realtime session key by forwarding a request to
@@ -36,10 +99,14 @@ export async function POST(req: Request) {
   const voice = typeof body.voice === "string" && body.voice.trim() ? body.voice.trim() : defaultVoice;
   // If caller didn't provide custom instructions, build a voice-optimized Rick system prompt
   const instructions = (() => {
-    if (typeof body.instructions === "string" && body.instructions.trim()) return body.instructions.trim();
-  const base = process.env.RICK_BASE_PROMPT || `You are Rick, the Blueridge AI Agency assistant (voice mode).\n`;
+    const override = typeof body.instructions === "string" ? body.instructions.trim() : "";
+    const base = override || process.env.RICK_BASE_PROMPT || `You are Rick, the Blueridge AI Agency assistant (voice mode).\n`;
+    const currentEtDate = etDateString();
     const shared = `Tone: professional, concise, responsible, approachable. Keep spoken replies short (<= ~15s).\n` +
       `Never repeat your initial greeting after first turn. Mention "Blueridge AI Agency" once early if not yet mentioned.\n` +
+      `CURRENT_DATE_ET=${currentEtDate}. All scheduling dates and times use America/New_York.\n` +
+      `BOOKING TOOLS: For any scheduling request, resolve today, tomorrow, or a bare weekday against CURRENT_DATE_ET; a bare weekday means its next occurrence. ALWAYS call check_availability before stating or offering any time. Never invent availability. Restate the weekday and calendar date, then offer 2-3 concise choices using only timestamps returned by the tool. If the requested part of day is full, say so and offer returned same-day alternatives.\n` +
+      `After the user chooses one returned time, collect their name and email (and phone if they want to provide it), then call book_appointment with that exact returned startISO. Never say an appointment is booked before the tool reports eventCreated=true. If it was booked but the confirmation email failed, clearly say the appointment is booked and the email could not be sent; do not book a duplicate.\n` +
       `Follow booking rules: interpret bare weekday as NEXT occurrence (America/New_York). If user says today/tomorrow resolve to ET date. Before proposing times, restate the weekday + calendar date. Offer 2–3 grouped time windows based only on availability tool results.\n` +
   `Collect name + spelled email + phone together when asked. Instruct the USER to spell the email letter-by-letter the FIRST time; do NOT you (the assistant) spell the email back unless the user explicitly asks you to repeat it. Never ask for a yes/no confirmation after user spelling—just proceed once you have it. If the user later provides a different email, briefly acknowledge the update and continue.\n` +
       `Out-of-scope topics (politics, sports, news, entertainment) -> briefly decline and redirect to services & booking.\n` +
@@ -63,6 +130,8 @@ export async function POST(req: Request) {
           model: defaultModel,
           instructions,
           audio: { output: { voice } },
+          tools: bookingTools,
+          tool_choice: "auto",
         },
       }),
     });

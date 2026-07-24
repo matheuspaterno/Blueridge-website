@@ -50,6 +50,30 @@ type ConnState =
   | "muted"
   | "error";
 
+// Realtime function tools own scheduling. The older browser-only weekday
+// parser remains as dormant fallback code, but cannot run in parallel.
+const REALTIME_BOOKING_TOOLS_ENABLED = true;
+const BOOKING_TIME_ZONE = "America/New_York";
+
+function dateInBookingTimeZone(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: BOOKING_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+function hourInBookingTimeZone(iso: string): number {
+  return Number(new Intl.DateTimeFormat("en-US", {
+    timeZone: BOOKING_TIME_ZONE,
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso)));
+}
+
 // Helper to format transcript lines (unit tested)
 export function formatTranscriptLine(l: TranscriptLine): string {
   const who = l.role === "user" ? "You" : "Rick";
@@ -118,6 +142,7 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
   const listeningRef = useRef(false); // true while mic streaming
   const negotiatedRef = useRef(false); // tracks if SDP negotiation done
   const sessionModelRef = useRef<string | undefined>(undefined);
+  const realtimeAvailableSlotsRef = useRef<Set<string>>(new Set());
 
   // Derived status text for UI pill
   const statusText = (() => {
@@ -140,7 +165,7 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
       return next.slice(-50);
     });
     // After adding a user transcript line, attempt scripted flow
-    if (line.role === 'user') {
+    if (line.role === 'user' && !REALTIME_BOOKING_TOOLS_ENABLED) {
       scriptedFlowRef.current?.(line.text);
     }
   }, []);
@@ -950,6 +975,133 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
     setSpeechFallbackActive(false);
   }, []);
 
+  const runRealtimeBookingTool = useCallback(async (name: string, args: any) => {
+    if (name === "check_availability") {
+      const requestedDate = String(args?.date || "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+        return { ok: false, error: "A valid date in YYYY-MM-DD format is required." };
+      }
+
+      const anchor = new Date(`${requestedDate}T12:00:00.000Z`);
+      if (Number.isNaN(anchor.getTime())) {
+        return { ok: false, error: "The requested date is invalid." };
+      }
+
+      const durationMins = Number.isFinite(Number(args?.durationMins))
+        ? Math.max(15, Math.min(120, Number(args.durationMins)))
+        : 30;
+      // Query a wide UTC range, then retain only the requested ET calendar day.
+      // This stays correct across daylight-saving changes.
+      const from = new Date(anchor.getTime() - 18 * 60 * 60 * 1000);
+      const to = new Date(anchor.getTime() + 18 * 60 * 60 * 1000);
+      const query = new URLSearchParams({
+        from: from.toISOString(),
+        to: to.toISOString(),
+        durationMins: String(durationMins),
+      });
+      const response = await fetch(`/api/availability?${query.toString()}`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return { ok: false, error: data?.error || "Calendar availability is temporarily unavailable." };
+      }
+
+      const allSlots = (Array.isArray(data?.slots) ? data.slots : [])
+        .filter((slot: unknown): slot is string => typeof slot === "string")
+        .filter((slot: string) => dateInBookingTimeZone(new Date(slot)) === requestedDate)
+        .map((slot: string) => new Date(slot).toISOString())
+        .filter((slot: string, index: number, slots: string[]) => slots.indexOf(slot) === index)
+        .slice(0, 12);
+
+      realtimeAvailableSlotsRef.current = new Set(allSlots);
+      const requestedTimeOfDay = ["morning", "afternoon"].includes(args?.timeOfDay)
+        ? args.timeOfDay
+        : "any";
+      const matchingSlots = allSlots.filter((slot: string) => {
+        const hour = hourInBookingTimeZone(slot);
+        if (requestedTimeOfDay === "morning") return hour >= 9 && hour < 12;
+        if (requestedTimeOfDay === "afternoon") return hour >= 12 && hour < 17;
+        return true;
+      });
+
+      return {
+        ok: true,
+        date: requestedDate,
+        timeZone: BOOKING_TIME_ZONE,
+        durationMins,
+        requestedTimeOfDay,
+        matchingSlots,
+        allSlots,
+        note: matchingSlots.length
+          ? "Offer only returned matchingSlots."
+          : allSlots.length
+            ? "The requested part of day is full; explain that and offer same-day choices from allSlots."
+            : "No availability exists on this date. Ask for another date.",
+      };
+    }
+
+    if (name === "book_appointment") {
+      const parsedStart = new Date(String(args?.startISO || ""));
+      if (Number.isNaN(parsedStart.getTime())) {
+        return { ok: false, eventCreated: false, error: "A valid appointment start time is required." };
+      }
+      const startISO = parsedStart.toISOString();
+      if (!realtimeAvailableSlotsRef.current.has(startISO)) {
+        return {
+          ok: false,
+          eventCreated: false,
+          error: "That time was not returned by the latest availability check. Check availability again before booking.",
+        };
+      }
+
+      const customerName = String(args?.name || "").trim();
+      const email = String(args?.email || "").trim().toLowerCase();
+      if (!customerName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return { ok: false, eventCreated: false, error: "A valid customer name and email are required." };
+      }
+
+      const durationMins = Number.isFinite(Number(args?.durationMins))
+        ? Math.max(15, Math.min(120, Number(args.durationMins)))
+        : 30;
+      const phone = String(args?.phone || "").trim();
+      const notes = [String(args?.notes || "").trim(), phone ? `Phone: ${phone}` : ""]
+        .filter(Boolean)
+        .join("\n");
+      const response = await fetch("/api/book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          start: startISO,
+          durationMins,
+          name: customerName,
+          email,
+          phone: phone || undefined,
+          notes: notes || undefined,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return {
+          ok: false,
+          eventCreated: Boolean(data?.eventCreated),
+          confirmationEmailSent: Boolean(data?.customerEmailSent),
+          error: data?.error || data?.calendarError || "The appointment could not be booked.",
+        };
+      }
+
+      if (data?.eventCreated) realtimeAvailableSlotsRef.current.delete(startISO);
+      return {
+        ok: Boolean(data?.eventCreated),
+        eventCreated: Boolean(data?.eventCreated),
+        confirmationEmailSent: Boolean(data?.customerEmailSent),
+        startISO,
+        timeZone: BOOKING_TIME_ZONE,
+        emailErrors: data?.emailErrors,
+      };
+    }
+
+    return { ok: false, error: `Unknown voice tool: ${name}` };
+  }, []);
+
   // Create peer connection (no negotiation yet)
   const createPeerConnection = useCallback(async () => {
     if (pcRef.current) return pcRef.current;
@@ -965,6 +1117,37 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
         const msg = JSON.parse(ev.data);
         const t = msg?.type;
         switch(t) {
+          case 'response.function_call_arguments.done': {
+            void (async () => {
+              const toolName = String(msg?.name || "");
+              let args: any = {};
+              try {
+                args = JSON.parse(msg?.arguments || "{}");
+              } catch {
+                args = {};
+              }
+              pushDebug(`Running voice tool: ${toolName}`);
+              let output: any;
+              try {
+                output = await runRealtimeBookingTool(toolName, args);
+              } catch (toolError: any) {
+                output = { ok: false, error: toolError?.message || "Voice booking tool failed." };
+              }
+
+              if (dc.readyState !== "open") return;
+              dc.send(JSON.stringify({
+                type: "conversation.item.create",
+                item: {
+                  type: "function_call_output",
+                  call_id: msg?.call_id,
+                  output: JSON.stringify(output),
+                },
+              }));
+              dc.send(JSON.stringify({ type: "response.create" }));
+              pushDebug(`Voice tool completed: ${toolName} (${output?.ok ? "ok" : "failed"})`);
+            })();
+            break;
+          }
           case 'input_audio_buffer.committed':
           case 'input_audio_buffer.speech_started':
           case 'input_audio_buffer.speech_stopped':
@@ -1058,7 +1241,7 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
     const transceiver = pc.addTransceiver("audio", { direction: "sendrecv" });
     senderRef.current = transceiver.sender;
     return pc;
-  }, [ensureSession, pushDebug, pushTranscript]);
+  }, [ensureSession, pushDebug, pushTranscript, runRealtimeBookingTool]);
 
   // Negotiate SDP if not already
   const negotiateIfNeeded = useCallback(async () => {
@@ -1199,7 +1382,9 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
                   if (n2) { setUserName(n2); pushDebug('Extracted name from line (heuristic)'); }
                 }
               } catch {}
-                try { scriptedFlowRef.current && scriptedFlowRef.current(text); } catch {}
+                if (!REALTIME_BOOKING_TOOLS_ENABLED) {
+                  try { scriptedFlowRef.current && scriptedFlowRef.current(text); } catch {}
+                }
               }
             }
           }
