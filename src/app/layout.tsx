@@ -1,5 +1,5 @@
 import "../index.css";
-import ChatWidget from "@/components/ChatWidget";
+import GlobalChatWidget from "@/components/GlobalChatWidget";
 
 export const metadata = {
   title: "Blueridge AI Agency",
@@ -15,7 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         {children}
-        <ChatWidget />
+        <GlobalChatWidget />
       </body>
     </html>
   );
