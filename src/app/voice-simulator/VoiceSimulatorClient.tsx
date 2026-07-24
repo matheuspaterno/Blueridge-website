@@ -312,7 +312,10 @@ export default function VoiceSimulatorClient() {
         iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
       });
       pcRef.current = pc;
-      // Data channel only: no microphone request, audio element, transceiver, or media track.
+      // OpenAI's WebRTC endpoint requires an audio media section in the SDP
+      // offer. Keep it explicitly inactive: there is no microphone request,
+      // media track, receiver playback, or audio model output.
+      pc.addTransceiver("audio", { direction: "inactive" });
       const channel = pc.createDataChannel("oai-events");
       channelRef.current = channel;
       channel.onmessage = handleEvent;
