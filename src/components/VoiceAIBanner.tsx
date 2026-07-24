@@ -1111,6 +1111,22 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
     pcRef.current = pc;
     const dc = pc.createDataChannel("oai-events");
     dataChanRef.current = dc;
+    let responseComplete = true;
+    let outputAudioPlaying = false;
+    let toolFollowupPending = false;
+    const maybeStartToolFollowup = () => {
+      if (!toolFollowupPending || !responseComplete || outputAudioPlaying || dc.readyState !== "open") return;
+      toolFollowupPending = false;
+      responseComplete = false;
+      dc.send(JSON.stringify({
+        type: "response.create",
+        response: {
+          output_modalities: ["audio"],
+          instructions: "The tool has finished. Start a fresh, complete sentence and give the result once. Do not repeat the wait phrase or restart any partial sentence.",
+        },
+      }));
+      pushDebug("Started queued post-tool voice response");
+    };
     dc.onmessage = (ev) => {
       pushDebug(`DataChannel raw: ${ev.data.slice(0,200)}`);
       try {
@@ -1143,26 +1159,37 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
                   output: JSON.stringify(output),
                 },
               }));
-              dc.send(JSON.stringify({ type: "response.create" }));
+              toolFollowupPending = true;
+              maybeStartToolFollowup();
               pushDebug(`Voice tool completed: ${toolName} (${output?.ok ? "ok" : "failed"})`);
             })();
             break;
           }
+          case 'response.created':
+            responseComplete = false;
+            break;
+          case 'response.done':
+            responseComplete = true;
+            maybeStartToolFollowup();
+            break;
+          case 'output_audio_buffer.started':
+            outputAudioPlaying = true;
+            break;
+          case 'output_audio_buffer.stopped':
+          case 'output_audio_buffer.cleared':
+            outputAudioPlaying = false;
+            maybeStartToolFollowup();
+            break;
           case 'input_audio_buffer.committed':
           case 'input_audio_buffer.speech_started':
           case 'input_audio_buffer.speech_stopped':
-          case 'output_audio_buffer.cleared':
           case 'conversation.item.truncated':
-          case 'response.created':
           case 'response.output_item.added':
           case 'response.content_part.added':
           case 'response.content_part.done':
           case 'response.output_item.done':
-          case 'response.done':
           case 'response.audio.done':
           case 'rate_limits.updated':
-          case 'output_audio_buffer.started':
-          case 'output_audio_buffer.stopped':
             // Low-value UI noise; ignore but don't log as unhandled to reduce clutter
             break;
           case 'transcript.delta':
@@ -1179,29 +1206,6 @@ export const VoiceAIBanner: React.FC<BannerProps> = ({ instructionsOverride }) =
             const text = msg?.text || msg?.content || '';
             if (text) {
               pushTranscript({ role: msg.role === 'user' ? 'user' : 'assistant', text, ts: Date.now() });
-              // Scan for EMAIL_JSON line inside final assistant transcript
-              if (msg.role !== 'user') {
-                const lines = text.split(/\n+/);
-                for (const ln of lines) {
-                  const m = ln.match(/^EMAIL_JSON:(\{.*\})$/);
-                  if (m) {
-                    try {
-                      const parsed = JSON.parse(m[1]);
-                      if (parsed?.email && /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(parsed.email)) {
-                        // If different / longer local part, accept directly (bypass heuristic)
-                        const cleaned = parsed.email.toLowerCase();
-                        if (cleaned !== userEmail) {
-                          pushDebug('EMAIL_JSON accepted: '+cleaned);
-                          setUserEmail(cleaned);
-                          spellingActiveRef.current = false; // stop local spelling capture
-                        }
-                      }
-                    } catch (e:any) {
-                      pushDebug('EMAIL_JSON parse error: '+(e?.message||e));
-                    }
-                  }
-                }
-              }
             }
             setConnState(prev => prev === 'listening' ? 'thinking' : prev);
             break;
